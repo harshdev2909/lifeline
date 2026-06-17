@@ -37,6 +37,9 @@ export type { TtsResult, TtsOptions } from "./tts";
 export { translateToEnglish, translateFromEnglish, isSupportedLang, supportedLangs, TRANSLATION_PAIRS } from "./translate";
 export type { TranslateResult } from "./translate";
 
+export { extractText } from "./ocr";
+export type { OcrResult, OcrOptions, OcrBlock } from "./ocr";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,

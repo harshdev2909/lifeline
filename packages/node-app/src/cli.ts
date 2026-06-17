@@ -29,6 +29,7 @@ import {
   KnowledgeBase,
   MEDICAL_DISCLAIMER,
   MODELS,
+  extractText,
   Provider,
   RunLogger,
   setSdkConsole,
@@ -119,6 +120,7 @@ ask options:
   --audio <wavfile>          Voice in: transcribe speech (Whisper, local) and use it as the prompt
   --speak                    Voice out: synthesize the answer to a .wav (Supertonic TTS, local)
   --image <path>             Vision: describe the image (multimodal), then ground the answer
+  --ocr <path>               OCR: read printed text off an image (label/sheet) as untrusted data
   --lang <code>              Non-English round-trip (es|fr): translate Q→EN, answer, EN→answer-lang
   --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
   --top-k <n>                Passages to retrieve (default: 4)
@@ -238,8 +240,9 @@ async function runAsk(args: Args): Promise<void> {
   let prompt = args.positionals.join(" ");
   const audioPath = fstr(flags, "audio");
   const imagePath = fstr(flags, "image");
-  if (!prompt.trim() && !audioPath && !imagePath) {
-    throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav> / --image <img>)');
+  const ocrPath = fstr(flags, "ocr");
+  if (!prompt.trim() && !audioPath && !imagePath && !ocrPath) {
+    throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav> / --image <img> / --ocr <img>)');
   }
 
   const model = resolveModel(flags);
@@ -350,6 +353,22 @@ async function runAsk(args: Args): Promise<void> {
     }
   }
 
+  // ---- OCR (printed text → string), if --ocr. The recognizer is small, so OCR runs LOCAL.
+  //      The extracted text is UNTRUSTED (a photographed label/sheet can carry an injection):
+  //      it's injection-scanned and fenced as data, then offered as an [OCR] grounding passage. ----
+  let ocrText: string | undefined;
+  if (ocrPath) {
+    if (!prompt.trim()) prompt = "Based on the text in this image, what should I do?";
+    if (!json) process.stderr.write(`🔤 OCR: reading text from ${ocrPath} (Latin recognizer, LOCAL) …\n`);
+    const r = await extractText(ocrPath, { onProgress: makeProgressReporter(json) });
+    ocrText = r.text;
+    logger.ocr({ model: r.model, image: ocrPath, block_count: r.block_count, text_chars: ocrText.length, ocr_ms: r.ocr_ms });
+    const oinj = detectInjection(ocrText);
+    logger.injectionGuard({ source: "ocr", detected: oinj.detected, patterns: oinj.patterns, action: oinj.detected ? "fenced+flagged" : "fenced" });
+    if (!json && oinj.detected) process.stderr.write(`  🛡  injection guard: flagged ${oinj.patterns.join(", ")} in OCR text — fenced as data\n`);
+    if (!json) process.stderr.write(`  ✓ read ${r.block_count} block(s), ${ocrText.length} chars in ${r.ocr_ms} ms: ${ocrText.slice(0, 120).replace(/\n/g, " ")}${ocrText.length > 120 ? "…" : ""}\n`);
+  }
+
   // ---- RAG retrieval (LOCAL) + safety, if --rag ----
   let kb: KnowledgeBase | undefined;
   let passages: RetrievedPassage[] = [];
@@ -367,9 +386,9 @@ async function runAsk(args: Args): Promise<void> {
       logger.ragSearch(r.stats);
       // With an image, the [IMG] findings are themselves grounding context, so we answer
       // (citing [IMG] + whatever manual passages retrieved) rather than hard-refusing.
-      const grounded = (passages.length > 0 && passages[0].score >= GROUNDING_MIN_SCORE) || Boolean(visionFindings);
-      // Run red-flag detection over the question AND the image findings.
-      safety = assessSafety({ query: `${prompt} ${visionFindings ?? ""}`, grounded });
+      const grounded = (passages.length > 0 && passages[0].score >= GROUNDING_MIN_SCORE) || Boolean(visionFindings) || Boolean(ocrText);
+      // Run red-flag detection over the question AND the image findings / OCR text.
+      safety = assessSafety({ query: `${prompt} ${visionFindings ?? ""} ${ocrText ?? ""}`, grounded });
       logger.safety({
         red_flag: safety.red_flag,
         red_flag_terms: safety.red_flag_terms,
@@ -410,6 +429,12 @@ async function runAsk(args: Args): Promise<void> {
       tagged.unshift({
         tag: "IMG",
         p: { id: "image", source: "image", section: "vision findings", content: visionFindings, score: 1, snippet: visionFindings.slice(0, 120) },
+      });
+    }
+    if (ocrText) {
+      tagged.unshift({
+        tag: "OCR",
+        p: { id: "ocr", source: "image", section: "OCR text", content: ocrText, score: 1, snippet: ocrText.slice(0, 120).replace(/\n/g, " ") },
       });
     }
     const messages: ChatMsg[] = tagged.length

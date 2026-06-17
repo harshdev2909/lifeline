@@ -181,6 +181,15 @@ export interface TranslationEvent {
   chars: number;
   ms: number;
 }
+export interface OcrEvent {
+  type: "ocr";
+  ts: string;
+  model: string;
+  image: string;
+  block_count: number;
+  text_chars: number;
+  ocr_ms: number;
+}
 export interface VisionEvent {
   type: "vision";
   ts: string;
@@ -245,7 +254,7 @@ export type EvidenceEvent =
   | GroundingCheckEvent
   | InjectionGuardEvent
   | SttEvent  | TranslationEvent
-
+  | OcrEvent
   | VisionEvent
   | TtsEvent
   | MedbenchEvent;
@@ -361,6 +370,10 @@ export class RunLogger {
 
   translation(args: Omit<TranslationEvent, "type" | "ts">): void {
     this.write({ type: "translation", ts: new Date().toISOString(), ...args });
+  }
+
+  ocr(args: Omit<OcrEvent, "type" | "ts">): void {
+    this.write({ type: "ocr", ts: new Date().toISOString(), ...args });
   }
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {
