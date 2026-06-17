@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Dev utility: prefetch + smoke-test the RAG embedding model
- * (EMBEDDINGGEMMA_300M_Q8_0) so it is cached/offline before Day 3.
+ * Dev utility: prefetch and smoke-test the RAG embedding model
+ * (EMBEDDINGGEMMA_300M_Q8_0) so it is cached and available offline.
  *
- * Standalone — imports @qvac/sdk directly. This is a one-off prefetch tool, NOT
- * part of the node-app CLI (which still depends only on @lifeline/core). Run:
+ * Standalone — imports @qvac/sdk directly. This is a one-off prefetch tool, not
+ * part of the node-app CLI (which depends only on @lifeline/core). Run:
  *   node scripts/prefetch-embeddings.mjs
  */
 import { dirname, join, resolve } from "node:path";

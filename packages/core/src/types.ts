@@ -1,9 +1,9 @@
 /**
  * Lifeline core types — deliberately SDK-agnostic.
  *
- * The CLI (and every future caller) depends ONLY on these types and on the
- * `InferenceEngine` interface. Nothing here imports `@qvac/sdk`, so swapping a
- * local engine for a delegated (P2P) one on Day 2 requires zero caller changes.
+ * The CLI (and every other caller) depends only on these types and on the
+ * `InferenceEngine` interface. Nothing here imports `@qvac/sdk`, so a local
+ * engine and a delegated (P2P) one are interchangeable to callers.
  */
 
 export type Role = "system" | "user" | "assistant";
@@ -114,10 +114,9 @@ export interface DelegationInfo {
 /**
  * The one boundary the whole app is built around.
  *
- * Day 1 ships `LocalEngine` (QVAC-backed, on-device). Day 2 adds
- * `DelegatedEngine` implementing this SAME interface, so the CLI never learns
- * which one it's talking to. See `createEngine()` in `engine.ts` for the single
- * place that decides.
+ * `LocalEngine` (on-device) and `DelegatedEngine` (P2P) both implement this
+ * interface, so the CLI never learns which one it's talking to. See
+ * `createEngine()` in `engine.ts` for the single place that decides.
  */
 export interface InferenceEngine {
   readonly kind: EngineKind;

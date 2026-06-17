@@ -21,27 +21,10 @@ models/
 *.gguf
 *.onnx
 
-# Evidence run logs: ignore everything EXCEPT the committed sample runs.
+# Live audit logs land here at runtime; they're disposable.
+# Curated, committed examples live in examples/logs/ instead.
 evidence/*.jsonl
-!evidence/run-sample.jsonl
-!evidence/run-sample-delegated.jsonl
-!evidence/run-sample-bench.jsonl
-!evidence/run-sample-fallback.jsonl
-!evidence/run-sample-rag-grounded.jsonl
-!evidence/run-sample-rag-refuse.jsonl
-!evidence/run-sample-rag-delegated.jsonl
-!evidence/run-sample-medbench.jsonl
-!evidence/run-sample-voice.jsonl
-!evidence/run-sample-stall-fallback.jsonl
-!evidence/run-sample-voiceout.jsonl
-!evidence/run-sample-vision.jsonl
-!evidence/run-sample-injection.jsonl
-
-# medbench markdown tables (keep one sample)
-evidence/medbench-*.md
-!evidence/medbench-sample.md
-
-# generated audio (regenerable; do not commit binaries)
+evidence/*.md
 evidence/*.wav
 
 # test image binaries are tiny + synthetic — keep them

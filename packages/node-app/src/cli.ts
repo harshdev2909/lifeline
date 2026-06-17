@@ -1,9 +1,9 @@
 /**
- * Lifeline CLI — laptop orchestrator (Day 2: + P2P delegated inference).
+ * Lifeline CLI — the orchestrator that ties the pieces together.
  *
- * Acceptance invariant: this file depends ONLY on `@lifeline/core` (its
- * `InferenceEngine` interface, `Provider`, logger, sysinfo, p2p helpers). It
- * NEVER imports `@qvac/sdk`. Local vs delegated is chosen by `createEngine`.
+ * This file depends only on `@lifeline/core` (the `InferenceEngine` interface,
+ * `Provider`, logger, sysinfo, p2p helpers); it never imports `@qvac/sdk`.
+ * Local vs delegated execution is chosen entirely by `createEngine`.
  *
  * Commands:
  *   lifeline ask "<q>" [--delegate --topic T | --provider-key K] [--model m]

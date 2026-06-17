@@ -14,7 +14,7 @@
 #     ai_related:    true|false  (cloud AI inference is FORBIDDEN — must stay false)
 
 remote_api_calls:
-  # Day 2: P2P delegated inference uses the Holepunch/Hyperswarm DHT for peer
+  # P2P delegated inference uses the Holepunch/Hyperswarm DHT for peer
   # DISCOVERY and NAT holepunching only. No prompts or model data touch it.
   - service: "Hyperswarm DHT (Holepunch public bootstrap nodes)"
     endpoint: "Holepunch public DHT bootstrap (UDP/UDX); default bootstrap servers"
@@ -43,13 +43,11 @@ model_weight_downloads:
     when: "first use only; cached on disk (repo-local .qvac-home) afterwards; fully offline once cached"
     ai_inference: "local-only (on-device or on a peer); the download moves weights, not prompts/data"
     descriptors_used:
-      # Day 1–3
       - "LLAMA_3_2_1B_INST_Q4_0            # default chat / fast local model"
-      - "MEDPSY_4B_*_Q4_K_M               # medical hero (grounded triage)"
-      - "MEDGEMMA_4B_IT_Q4_1              # medical comparison model (medbench)"
+      - "MEDPSY_4B_*_Q4_K_M               # primary medical model (grounded triage)"
+      - "MEDGEMMA_4B_IT_Q4_1              # medical comparison model"
       - "<embedding model>               # RAG embeddings (KnowledgeBase)"
       - "WHISPER_EN_BASE_Q8_0            # speech-to-text (English voice-in)"
-      # Day 4
       - "TTS_EN_SUPERTONIC_Q8_0          # voice-out (text-to-speech), --speak"
       - "SMOLVLM2_500M_MULTIMODAL_Q8_0   # vision (image findings), --image"
       - "MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0  # vision projection (mmproj)"

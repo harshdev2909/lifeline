@@ -1,14 +1,13 @@
 /**
- * engine.ts — the InferenceEngine abstraction + the QVAC-backed LocalEngine.
+ * engine.ts — the InferenceEngine abstraction and its two implementations.
  *
- * Forward-looking design (the whole point of Day 1):
- *   - Callers depend ONLY on the `InferenceEngine` interface (see types.ts).
- *   - `createEngine()` is the SINGLE place that decides which engine to build.
- *   - Day 2 adds `DelegatedEngine` (P2P) implementing the same interface; it
- *     plugs into the `case "delegated"` branch below. No CLI changes needed.
+ * Callers depend only on the InferenceEngine interface (see types.ts), and
+ * createEngine() is the single place that picks an implementation: LocalEngine
+ * (on-device) or DelegatedEngine (over P2P). Swapping one for the other needs no
+ * change in the CLI.
  *
- * All QVAC specifics (function names, stat field names, profiler) are contained
- * in THIS file so the rest of Lifeline stays SDK-agnostic.
+ * Every QVAC specific (function names, stat field names, the profiler) lives in
+ * this file so the rest of the codebase stays SDK-agnostic.
  */
 import { performance } from "node:perf_hooks";
 
@@ -43,13 +42,13 @@ import type {
 export const MODELS = {
   /** Small, fast default — ~773 MB, downloaded+cached on first run, offline after. */
   llama1b: { label: "Llama 3.2 1B Instruct (Q4_0)", src: LLAMA_3_2_1B_INST_Q4_0, type: "llamacpp-completion" },
-  /** MedGemma — medical model from the QVAC registry (baseline for the medical vertical). */
-  medgemma4b: { label: "MedGemma 4B IT (Q4_1) — medical", src: MEDGEMMA_4B_IT_Q4_1, type: "llamacpp-completion", config: { ctx_size: 8192 } },
-  /** MedPsy-4B — the medical hero model. Not in the QVAC registry; loaded from HF (GGUF URL).
-   *  A chain-of-thought model: we surface the SDK's clean thinking-stripped answer (see
-   *  `reasoning`), with a generous `predict` so reasoning + answer both fit. */
+  /** MedGemma — medical model from the QVAC registry. */
+  medgemma4b: { label: "MedGemma 4B IT (Q4_1)", src: MEDGEMMA_4B_IT_Q4_1, type: "llamacpp-completion", config: { ctx_size: 8192 } },
+  /** MedPsy-4B — the primary medical model. Not in the QVAC registry; loaded from a HF GGUF URL.
+   *  A chain-of-thought model: we surface the SDK's thinking-stripped answer (see `reasoning`),
+   *  with a generous `predict` so reasoning and answer both fit. */
   medpsy4b: {
-    label: "MedPsy-4B (Q4_K_M) — medical hero",
+    label: "MedPsy-4B (Q4_K_M)",
     src: "https://huggingface.co/qvac/MedPsy-4B-GGUF/resolve/main/medpsy-4b-q4_k_m-imat.gguf",
     type: "llamacpp-completion",
     reasoning: true,
