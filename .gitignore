@@ -33,7 +33,11 @@ evidence/*.jsonl
 !evidence/run-sample-medbench.jsonl
 !evidence/run-sample-voice.jsonl
 !evidence/run-sample-stall-fallback.jsonl
+!evidence/run-sample-voiceout.jsonl
 
 # medbench markdown tables (keep one sample)
 evidence/medbench-*.md
 !evidence/medbench-sample.md
+
+# generated audio (regenerable; do not commit binaries)
+evidence/*.wav

@@ -31,6 +31,9 @@ export type { SdkLogLevel } from "./sdklog";
 export { transcribeAudio } from "./voice";
 export type { TranscribeResult, TranscribeOptions } from "./voice";
 
+export { synthesizeToWav } from "./tts";
+export type { TtsResult, TtsOptions } from "./tts";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,

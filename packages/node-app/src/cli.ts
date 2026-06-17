@@ -30,6 +30,7 @@ import {
   Provider,
   RunLogger,
   setSdkConsole,
+  synthesizeToWav,
   topicToProviderKey,
   topicToSeedHex,
   transcribeAudio,
@@ -70,7 +71,7 @@ function setupQvacEnv(role: "provider" | "consumer"): void {
 }
 
 // --- tiny arg parser (no deps) ---
-const BOOL_FLAGS = new Set(["delegate", "no-stream", "json", "no-warm", "simulate-stall", "help", "h"]);
+const BOOL_FLAGS = new Set(["delegate", "no-stream", "json", "no-warm", "simulate-stall", "speak", "help", "h"]);
 interface Args {
   command?: string;
   positionals: string[];
@@ -112,6 +113,8 @@ Commands:
 
 ask options:
   --audio <wavfile>          Voice in: transcribe speech (Whisper, local) and use it as the prompt
+  --speak                    Voice out: synthesize the answer to a .wav (Supertonic TTS, local)
+  --image <path>             Vision: describe the image (multimodal), then ground the answer
   --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
   --top-k <n>                Passages to retrieve (default: 4)
   --model <key>              ${Object.keys(MODELS).join(" | ")}  (default: llama1b; medical: medpsy4b)
@@ -426,6 +429,17 @@ async function runAsk(args: Args): Promise<void> {
     await engine.unload(modelId);
     logger.modelUnload(modelId);
 
+    // Voice out: synthesize the ANSWER (not the reasoning, not the disclaimer).
+    let ttsPath: string | undefined;
+    if (fbool(flags, "speak") && answer.trim()) {
+      if (!json) process.stderr.write(`  🔊 synthesizing answer (Supertonic TTS, local) …\n`);
+      const wav = logger.path.replace(/run-(.*)\.jsonl$/, "answer-$1.wav");
+      const r = await synthesizeToWav(answer.trim(), wav, { onProgress: makeProgressReporter(json) });
+      logger.tts({ model: r.model, engine: r.engine, chars: r.chars, synth_ms: r.synth_ms, out_path: r.out_path, sample_rate: r.sample_rate });
+      ttsPath = r.out_path;
+      if (!json) process.stderr.write(`  ✓ audio: ${r.out_path}  (${r.samples} samples, ${r.synth_ms} ms)\n`);
+    }
+
     if (json) {
       process.stdout.write(
         JSON.stringify({
@@ -438,6 +452,7 @@ async function runAsk(args: Args): Promise<void> {
           disclaimer: MEDICAL_DISCLAIMER,
           sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score, snippet: t.p.snippet })),
           hallucinated_cites: hallucinated,
+          audio_out: ttsPath,
           peer_key: di.peer_key,
           transport_setup_ms: di.transport_setup_ms,
           load_ms: Math.round(loadMs),

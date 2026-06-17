@@ -167,9 +167,11 @@ export interface TtsEvent {
   type: "tts";
   ts: string;
   model: string;
+  engine?: string;
   chars: number;
   synth_ms: number;
   out_path: string;
+  sample_rate?: number;
 }
 
 export interface MedbenchRow {
