@@ -69,12 +69,60 @@ export interface SdkProfileEvent {
   export: unknown;
 }
 
+/** One side of a local-vs-delegated benchmark row. */
+export interface BenchRow {
+  served_by: "local" | "remote";
+  load_ms?: number;
+  transport_setup_ms?: number;
+  ttft_ms?: number;
+  tokens_per_sec?: number;
+  completion_tokens?: number;
+  total_ms?: number;
+  backend_device?: string;
+  error?: string;
+}
+
+export interface DelegationEvent {
+  type: "delegation";
+  ts: string;
+  topic?: string;
+  peer_key: string;
+  transport_setup_ms: number;
+  /** true if verified in code; otherwise "per-docs" (Holepunch Noise/UDX E2E, DHT for discovery only). */
+  e2e_encrypted: boolean | "per-docs";
+  served_by: "remote";
+  modelId: string;
+  ttft_ms?: number;
+  tokens_per_sec?: number;
+  completion_tokens?: number;
+}
+export interface FallbackEvent {
+  type: "fallback";
+  ts: string;
+  reason: string;
+  from: "remote";
+  served_by: "local";
+  topic?: string;
+  peer_key?: string;
+}
+export interface BenchEvent {
+  type: "bench";
+  ts: string;
+  prompt: string;
+  topic?: string;
+  local: BenchRow;
+  delegated: BenchRow;
+}
+
 export type EvidenceEvent =
   | SessionEvent
   | ModelLoadEvent
   | InferenceEvent
   | ModelUnloadEvent
-  | SdkProfileEvent;
+  | SdkProfileEvent
+  | DelegationEvent
+  | FallbackEvent
+  | BenchEvent;
 
 function defaultEvidenceDir(): string {
   if (process.env.LIFELINE_EVIDENCE_DIR) return process.env.LIFELINE_EVIDENCE_DIR;
@@ -143,6 +191,18 @@ export class RunLogger {
   sdkProfile(profileExport: unknown): void {
     if (!profileExport) return;
     this.write({ type: "sdk_profile", ts: new Date().toISOString(), export: profileExport });
+  }
+
+  delegation(args: Omit<DelegationEvent, "type" | "ts" | "served_by">): void {
+    this.write({ type: "delegation", ts: new Date().toISOString(), served_by: "remote", ...args });
+  }
+
+  fallback(args: Omit<FallbackEvent, "type" | "ts" | "from" | "served_by">): void {
+    this.write({ type: "fallback", ts: new Date().toISOString(), from: "remote", served_by: "local", ...args });
+  }
+
+  bench(args: Omit<BenchEvent, "type" | "ts">): void {
+    this.write({ type: "bench", ts: new Date().toISOString(), ...args });
   }
 
   /** Latest event of a given type, for building the human-readable summary. */

@@ -15,10 +15,15 @@ dist/
 # .qvac-home/ is QVAC's storage root, redirected here off the (full) home disk.
 .qvac/
 .qvac-home/
+.qvac-home-consumer/
+.qvac-cache/
 models/
 *.gguf
 *.onnx
 
-# Evidence run logs: ignore everything EXCEPT the one committed sample run.
+# Evidence run logs: ignore everything EXCEPT the committed sample runs.
 evidence/*.jsonl
 !evidence/run-sample.jsonl
+!evidence/run-sample-delegated.jsonl
+!evidence/run-sample-bench.jsonl
+!evidence/run-sample-fallback.jsonl

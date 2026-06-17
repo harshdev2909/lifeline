@@ -12,6 +12,7 @@
     "./sysinfo": "./src/sysinfo.ts"
   },
   "dependencies": {
-    "@qvac/sdk": "0.13.3"
+    "@qvac/sdk": "0.13.3",
+    "hypercore-crypto": "^3.7.0"
   }
 }

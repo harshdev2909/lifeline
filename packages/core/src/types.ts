@@ -60,6 +60,20 @@ export interface ProgressUpdate {
 export type EngineKind = "local" | "delegated";
 
 /**
+ * Where the most recent operation was actually served, plus P2P transport detail.
+ * Engine-neutral so the CLI can log delegation evidence without knowing the engine type.
+ */
+export interface DelegationInfo {
+  served_by: "local" | "remote";
+  /** Provider public key (hex) when served remotely. */
+  peer_key?: string;
+  /** Time to establish/verify the P2P link (ms). */
+  transport_setup_ms?: number;
+  /** Set when a delegated request fell back to local. */
+  fallback_reason?: string;
+}
+
+/**
  * The one boundary the whole app is built around.
  *
  * Day 1 ships `LocalEngine` (QVAC-backed, on-device). Day 2 adds
@@ -84,6 +98,8 @@ export interface InferenceEngine {
 
   /** SDK-reported stats from the most recent completion, if the engine surfaced them. */
   lastStats?(): CompletionStats | null;
+  /** Where the last op was served (local vs remote) + P2P transport detail. */
+  delegationInfo?(): DelegationInfo | null;
   /** SDK-reported load/download timing gauges from the most recent loadModel(). */
   loadStats?(): Record<string, number>;
   /** Engine/SDK profiler snapshot to embed in the evidence log. */

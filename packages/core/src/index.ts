@@ -2,6 +2,7 @@
 export type {
   ChatMsg,
   CompletionStats,
+  DelegationInfo,
   EngineKind,
   InferenceEngine,
   ModelRef,
@@ -13,14 +14,27 @@ export type {
 export {
   createEngine,
   LocalEngine,
+  DelegatedEngine,
   MODELS,
   DEFAULT_MODEL,
   type EngineOptions,
 } from "./engine";
 
+export { Provider } from "./provider";
+export type { FirewallConfig, ProviderOptions } from "./provider";
+
+export { topicToSeedHex, topicToProviderKey, seedHexToProviderKey } from "./p2p";
+
+export { setSdkConsole, setSdkLogLevel } from "./sdklog";
+export type { SdkLogLevel } from "./sdklog";
+
 export { RunLogger } from "./logger";
 export type {
+  BenchEvent,
+  BenchRow,
+  DelegationEvent,
   EvidenceEvent,
+  FallbackEvent,
   InferenceEvent,
   MeasuredInference,
   ModelLoadEvent,

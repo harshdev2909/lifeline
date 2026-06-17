@@ -1,8 +1,8 @@
-# Lifeline — structured disclosure of every REMOTE API call the project makes.
+# Lifeline — structured disclosure of every REMOTE network dependency the project has.
 #
 # QVAC Hackathon rule: ALL AI inference / embeddings / RAG / STT / TTS / vision
-# run LOCALLY via @qvac/sdk. No cloud AI APIs (no OpenAI/Anthropic/etc.), ever.
-# This file is graded; keep it accurate as the project grows across the 5 days.
+# run LOCALLY via @qvac/sdk (on-device, or on a peer device over P2P). No cloud
+# AI APIs (no OpenAI/Anthropic/etc.), ever. This file is graded; keep it accurate.
 #
 # Schema for each entry under remote_api_calls:
 #   - service:       provider / service name
@@ -11,16 +11,34 @@
 #     data_sent:     what leaves the device
 #     triggered_by:  code path that initiates it
 #     day_added:     which build day introduced it
-#     ai_related:    true|false  (AI calls to the cloud are FORBIDDEN — must stay false/empty)
+#     ai_related:    true|false  (cloud AI inference is FORBIDDEN — must stay false)
 
-# Day 1: ZERO remote API calls. Inference is fully local via @qvac/sdk.
-remote_api_calls: []
+remote_api_calls:
+  # Day 2: P2P delegated inference uses the Holepunch/Hyperswarm DHT for peer
+  # DISCOVERY and NAT holepunching only. No prompts or model data touch it.
+  - service: "Hyperswarm DHT (Holepunch public bootstrap nodes)"
+    endpoint: "Holepunch public DHT bootstrap (UDP/UDX); default bootstrap servers"
+    purpose: "Peer discovery + NAT holepunching: locate a provider by its public key and open a direct peer link for delegated inference."
+    data_sent: "Routing/holepunch coordination only (public keys, transient connection metadata). NO prompts, completions, or model weights — inference content flows solely over the end-to-end-encrypted (Noise/UDX) peer connection."
+    triggered_by: "lifeline serve (provider announce, core/provider.ts) and lifeline ask --delegate / lifeline bench (consumer connect, core DelegatedEngine)."
+    day_added: 2
+    ai_related: false
+    notes: >-
+      Discovery uses the public DHT (internet bootstrap) BY DEFAULT. The
+      inference itself is 100% local on the provider device — the cloud is never
+      asked to run a model. Offline/LAN-only operation is possible with a
+      pre-shared provider key (Lifeline already derives a deterministic key from
+      a shared topic string) plus a local DHT bootstrap or swarm relays
+      (QVAC supports relayThrough); not exercised today (WAN was up).
+      E2E-encryption of the peer link is per Holepunch/Hyperswarm docs (Noise
+      handshake over UDX); recorded in evidence as "per-docs" (not independently
+      verified in code).
 
 # Full-transparency note (NOT an application API call):
-# On first run only, @qvac/sdk fetches the model weights for the built-in
-# descriptor and caches them on disk. All inference is offline thereafter.
-# Weights are bundled in neither this repo nor the SDK.
+# On first use, @qvac/sdk fetches model weights for a model descriptor over the
+# QVAC registry (a Holepunch Hyperdrive) and caches them on disk; all inference
+# is offline thereafter. Weights are bundled in neither this repo nor the SDK.
 model_weight_downloads:
-  - source: "@qvac/sdk built-in model descriptor (LLAMA_3_2_1B_INST_Q4_0)"
-    when: "first run only; cached on disk afterwards; fully offline once cached"
-    ai_inference: "local-only (on-device); the download moves weights, not prompts/data"
+  - source: "@qvac/sdk built-in model descriptors (e.g. LLAMA_3_2_1B_INST_Q4_0, MEDGEMMA_4B_IT_Q4_1) via the QVAC registry (Hyperdrive P2P)"
+    when: "first use only; cached on disk (repo-local .qvac-home) afterwards; fully offline once cached"
+    ai_inference: "local-only (on-device or on a peer); the download moves weights, not prompts/data"

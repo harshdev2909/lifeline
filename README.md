@@ -15,14 +15,15 @@ Built for **Tether's QVAC Hackathon I — “Unleash Edge AI.”**
 ### 5-day plan
 | Day | Focus |
 |----|-------|
-| **1 (this commit)** | Local QVAC inference spine on the laptop + engine abstraction + evidence/profiling pipeline + repo hygiene. |
-| 2 | P2P **delegated** inference between two real devices over QVAC's Holepunch/Pears stack, with `fallbackToLocal`. |
+| **1 ✅** | Local QVAC inference spine on the laptop + engine abstraction + evidence/profiling pipeline + repo hygiene. |
+| **2 ✅** | P2P **delegated** inference over QVAC's Holepunch stack (`serve` / `ask --delegate` / `bench`), with transparent fallback-to-local. |
 | 3 | Medical vertical — MedGemma/MedPsy + RAG over an offline field manual + voice (STT/TTS) + translation. |
 | 4 | Multimodal (vision/OCR), the Raspberry Pi node, prompt-injection hardening of the delegated path. |
 | 5 | 5-min demo video, reproducibility, evidence bundle, submission. |
 
-> **Day 1 is foundation only.** It is built so that Day 2 (swapping the local engine for a
-> delegated P2P one) is a *one-line change* — see [Engine abstraction](#engine-abstraction).
+> Days 1–2 done. The CLI talks only to `core`'s `InferenceEngine`; `createEngine()` returns a
+> `LocalEngine` or a `DelegatedEngine` (P2P) with no caller changes — see
+> [Engine abstraction](#engine-abstraction) and [P2P delegated inference](#p2p-delegated-inference-day-2).
 
 ---
 
@@ -99,24 +100,72 @@ interface InferenceEngine {
 }
 ```
 
-Day 1 ships **`LocalEngine`** (QVAC-backed, on-device). **The single place Day 2 plugs in** is
-`createEngine()` in [`packages/core/src/engine.ts`](./packages/core/src/engine.ts) — the
-`case "delegated"` branch, where a `DelegatedEngine` implementing the *same* interface will use
-QVAC's `loadModel({ ..., delegate })` + `startQVACProvider({ topic })` with `fallbackToLocal`.
-**The CLI needs zero changes.**
+`createEngine()` in [`packages/core/src/engine.ts`](./packages/core/src/engine.ts) returns a
+**`LocalEngine`** (QVAC-backed, on-device) or a **`DelegatedEngine`** (P2P) — the CLI can't tell
+them apart. The delegated engine uses QVAC's `loadModel({ ..., delegate: { providerPublicKey } })`
+and falls back to local (via a `heartbeat()` probe) when the provider is unreachable.
+
+## P2P delegated inference (Day 2)
+
+A weak device offloads a whole completion to a stronger peer; if the peer is gone it degrades to
+local — same `InferenceEngine`, so callers never change.
+
+```bash
+# Terminal A — host a model for peers (prints the provider's public key):
+./lifeline serve --topic demo --model llama1b
+
+# Terminal B — delegate a completion to that peer over end-to-end-encrypted P2P:
+./lifeline ask --delegate --topic demo "Explain heat stroke first aid in 3 steps"
+#   → served_by: remote peer   (or "local (FALLBACK)" if the provider is down)
+
+# Side-by-side local vs delegated benchmark:
+./lifeline bench --topic demo "Explain heat stroke first aid in 3 steps"
+```
+
+`--topic <t>` is a convenience: both sides derive the **same** provider key from the topic
+(`seed = sha256("lifeline:"+topic)`, `key = DHT.keyPair(seed)`), so no key-copying is needed —
+the topic is a pre-shared secret. Use `--provider-key <hex>` to target a specific peer. Add
+`--json` for machine-readable output.
+
+**How it actually works (verified, not per-spec):**
+- **No topics in QVAC** — delegation targets a provider **public key**; `--topic` derives it
+  deterministically (verified `DHT.keyPair(seed)` == `hypercore-crypto.keyPair(seed)`).
+- **Topology tested:** two **separate OS processes** on one Mac over **real Holepunch** (not
+  in-memory). Each role gets its own registry corestore (`.qvac-home` vs `.qvac-home-consumer`)
+  with a **shared model-weights cache**, so a long-lived provider's corestore lock never collides.
+- **Runtime:** both provider and consumer run on **Node.js** (the internal Bare worker does the DHT).
+- **Discovery needs the internet** by default: peers find each other and holepunch via the public
+  **Hyperswarm DHT** (first connect ≈ 5–9 s). Disclosed in [`remote-apis.yaml`](./remote-apis.yaml)
+  as a *discovery-only* dependency — **prompts/weights never touch the DHT**. Offline/LAN needs a
+  pre-shared key (we have it) + a local DHT bootstrap or swarm relays (not exercised; WAN was up).
+- **Encryption:** the peer link is end-to-end encrypted (Holepunch Noise/UDX) per the docs; logged
+  in evidence as `e2e_encrypted: "per-docs"` (not independently verified in code).
+- **Fallback:** a `heartbeat()` liveness probe; on failure the engine runs a local model and logs a
+  `fallback` event. New evidence event types: `delegation`, `fallback`, `bench`.
+
+**Day 3 plugs in here:** the medical vertical (MedGemma + RAG) reuses the *same*
+`InferenceEngine`/`createEngine()` — a RAG step builds the prompt, then `engine.complete()` runs
+locally **or** delegated unchanged. Model already wired: `--model medgemma4b`.
 
 ### Repo layout
 ```
 lifeline/
   package.json            # npm workspaces root + scripts
   LICENSE                 # Apache-2.0
-  remote-apis.yaml        # disclosure of every remote API call (Day 1: none)
-  lifeline                # ./lifeline ask "..." convenience launcher
+  remote-apis.yaml        # disclosure of remote network deps (DHT discovery; no cloud AI)
+  qvac.config.js          # shared model-weights cache location (off the full home disk)
+  .nvmrc                  # pinned Node version
+  lifeline                # ./lifeline ask|serve|bench convenience launcher
   packages/
-    core/                 # the important package — SDK-agnostic interface + QVAC LocalEngine
-      src/{engine,logger,sysinfo,types,index}.ts
-    node-app/             # laptop orchestrator CLI (talks only to @lifeline/core)
-      src/cli.ts
+    core/                 # the important package — SDK-agnostic; all @qvac/sdk use is here
+      src/
+        engine.ts         # InferenceEngine + LocalEngine + DelegatedEngine (P2P) + createEngine
+        provider.ts       # Provider role (startQVACProvider/warm/stop) for `serve`
+        p2p.ts            # topic → deterministic provider public key
+        logger.ts         # JSONL evidence (session/model_load/inference/delegation/fallback/bench)
+        sysinfo.ts  sdklog.ts  types.ts  index.ts
+    node-app/             # laptop orchestrator CLI (talks ONLY to @lifeline/core)
+      src/cli.ts          # ask | serve | bench
   evidence/               # run-<ISO>.jsonl logs (one sample committed)
 ```
 

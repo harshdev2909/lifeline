@@ -10,11 +10,14 @@
  * All QVAC specifics (function names, stat field names, profiler) are contained
  * in THIS file so the rest of Lifeline stays SDK-agnostic.
  */
+import { performance } from "node:perf_hooks";
+
 import {
   loadModel,
   completion,
   unloadModel,
   close,
+  heartbeat,
   profiler,
   LLAMA_3_2_1B_INST_Q4_0,
   MEDGEMMA_4B_IT_Q4_1,
@@ -24,6 +27,7 @@ import type { CompletionStats as QvacStats, LoadModelOptions, ModelProgressUpdat
 import type {
   ChatMsg,
   CompletionStats,
+  DelegationInfo,
   EngineKind,
   InferenceEngine,
   ModelRef,
@@ -58,6 +62,13 @@ export interface EngineOptions {
   onProgress?: (p: ProgressUpdate) => void;
   /** Enable the QVAC profiler so SDK-reported timings land in the evidence log. Default true. */
   profile?: boolean;
+  // --- delegation (kind === "delegated") ---
+  /** Provider public key (hex) to delegate inference to. Required for delegated engines. */
+  providerPublicKey?: string;
+  /** Delegated request timeout (ms). */
+  timeout?: number;
+  /** Provider liveness/health-check timeout (ms). */
+  healthCheckTimeout?: number;
 }
 
 function fromQvacStats(s: QvacStats | undefined): CompletionStats | null {
@@ -70,6 +81,17 @@ function fromQvacStats(s: QvacStats | undefined): CompletionStats | null {
     tokens_per_sec: s.tokensPerSecond,
     backend_device: s.backendDevice,
   };
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** Start a QVAC completion. Shared by Local and Delegated engines (same call shape; the
+ *  `delegate` is attached at loadModel time, so completion() is identical for both). */
+function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) {
+  const history = messages.map((m) => ({ role: m.role, content: m.content }));
+  return completion({ modelId, history, stream });
 }
 
 export class LocalEngine implements InferenceEngine {
@@ -116,8 +138,7 @@ export class LocalEngine implements InferenceEngine {
   }
 
   private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
-    const history = opts.messages.map((m) => ({ role: m.role, content: m.content }));
-    const run = completion({ modelId: opts.modelId, history, stream: true });
+    const run = startCompletion(opts.modelId, opts.messages, true);
     for await (const token of run.tokenStream) {
       yield token;
     }
@@ -126,8 +147,7 @@ export class LocalEngine implements InferenceEngine {
   }
 
   private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
-    const history = opts.messages.map((m) => ({ role: m.role, content: m.content }));
-    const run = completion({ modelId: opts.modelId, history, stream: false });
+    const run = startCompletion(opts.modelId, opts.messages, false);
     const final = await run.final;
     this.lastCompletionStats = fromQvacStats(final.stats);
     return final.contentText;
@@ -139,6 +159,10 @@ export class LocalEngine implements InferenceEngine {
 
   lastStats(): CompletionStats | null {
     return this.lastCompletionStats;
+  }
+
+  delegationInfo(): DelegationInfo {
+    return { served_by: "local" };
   }
 
   /** SDK-reported load/download gauges captured by the profiler during the last loadModel(). */
@@ -175,7 +199,158 @@ export class LocalEngine implements InferenceEngine {
 }
 
 /**
- * The ONE place that chooses an engine. Day 2's DelegatedEngine slots in here.
+ * DelegatedEngine — runs inference on a remote QVAC provider over Holepunch P2P,
+ * with transparent fallback to a local engine when the provider is unreachable.
+ *
+ * Same `InferenceEngine` interface as LocalEngine, so the CLI can't tell them
+ * apart. We manage fallback explicitly (heartbeat probe → local) rather than
+ * relying solely on the SDK's `delegate.fallbackToLocal`, so the evidence log
+ * records exactly where each request was served.
+ */
+export class DelegatedEngine implements InferenceEngine {
+  readonly kind = "delegated" as const;
+
+  private readonly providerPublicKey: string;
+  private readonly timeout?: number;
+  private readonly healthCheckTimeout: number;
+  private readonly progressCb?: (p: ProgressUpdate) => void;
+  private readonly enableProfile: boolean;
+
+  private remoteModelId?: string;
+  private local?: LocalEngine; // created only on fallback
+  private servedBy: "remote" | "local" = "remote";
+  private transportSetupMs = 0;
+  private fallbackReason?: string;
+  private lastCompletionStats: CompletionStats | null = null;
+
+  constructor(opts: EngineOptions) {
+    if (!opts.providerPublicKey) {
+      throw new Error("DelegatedEngine requires opts.providerPublicKey (provider's hex public key).");
+    }
+    this.providerPublicKey = opts.providerPublicKey;
+    this.timeout = opts.timeout;
+    // First DHT holepunch to a fresh peer can take several seconds; be generous
+    // so we actually delegate instead of prematurely falling back to local.
+    this.healthCheckTimeout = opts.healthCheckTimeout ?? 20000;
+    this.progressCb = opts.onProgress;
+    this.enableProfile = opts.profile !== false;
+    if (this.enableProfile) profiler.enable({ mode: "verbose" });
+  }
+
+  async loadModel({ model }: { model: ModelRef }): Promise<string> {
+    // 1) Liveness probe — also establishes/warms the P2P link. Time it as transport setup.
+    const t0 = performance.now();
+    let online = false;
+    try {
+      await heartbeat({ delegate: { providerPublicKey: this.providerPublicKey, timeout: this.healthCheckTimeout } });
+      online = true;
+    } catch (err) {
+      this.fallbackReason = `provider heartbeat failed: ${errMsg(err)}`;
+    }
+    this.transportSetupMs = performance.now() - t0;
+
+    if (!online) return this.fallbackLoad(model);
+
+    // 2) Delegated load — the provider loads/serves the model.
+    try {
+      const opts = {
+        modelSrc: model.src,
+        modelType: model.type,
+        ...(model.config ? { modelConfig: model.config } : {}),
+        delegate: {
+          providerPublicKey: this.providerPublicKey,
+          ...(this.timeout ? { timeout: this.timeout } : {}),
+          healthCheckTimeout: this.healthCheckTimeout,
+          // We manage fallback ourselves (below) for accurate evidence.
+          fallbackToLocal: false,
+        },
+        onProgress: (p: ModelProgressUpdate) => this.progressCb?.(p),
+      } as unknown as LoadModelOptions;
+      this.remoteModelId = await loadModel(opts);
+      this.servedBy = "remote";
+      return this.remoteModelId;
+    } catch (err) {
+      this.fallbackReason = `delegated loadModel failed: ${errMsg(err)}`;
+      return this.fallbackLoad(model);
+    }
+  }
+
+  private async fallbackLoad(model: ModelRef): Promise<string> {
+    this.servedBy = "local";
+    // Reuse the already-enabled global profiler; don't double-subscribe.
+    this.local = new LocalEngine({ onProgress: this.progressCb, profile: false });
+    return this.local.loadModel({ model });
+  }
+
+  complete(opts: {
+    modelId: string;
+    messages: ChatMsg[];
+    stream?: boolean;
+  }): AsyncIterable<string> | Promise<string> {
+    if (this.servedBy === "local" && this.local) return this.local.complete(opts);
+    return opts.stream === false ? this.completeOnce(opts) : this.completeStream(opts);
+  }
+
+  private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
+    const run = startCompletion(opts.modelId, opts.messages, true);
+    for await (const token of run.tokenStream) {
+      yield token;
+    }
+    const final = await run.final.catch(() => undefined);
+    this.lastCompletionStats = fromQvacStats(final?.stats);
+  }
+
+  private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
+    const run = startCompletion(opts.modelId, opts.messages, false);
+    const final = await run.final;
+    this.lastCompletionStats = fromQvacStats(final.stats);
+    return final.contentText;
+  }
+
+  async unload(modelId: string): Promise<void> {
+    if (this.servedBy === "local" && this.local) return this.local.unload(modelId);
+    await unloadModel({ modelId });
+  }
+
+  lastStats(): CompletionStats | null {
+    if (this.servedBy === "local" && this.local) return this.local.lastStats?.() ?? null;
+    return this.lastCompletionStats;
+  }
+
+  delegationInfo(): DelegationInfo {
+    return {
+      served_by: this.servedBy,
+      peer_key: this.providerPublicKey,
+      transport_setup_ms: this.transportSetupMs,
+      ...(this.fallbackReason ? { fallback_reason: this.fallbackReason } : {}),
+    };
+  }
+
+  loadStats(): Record<string, number> {
+    // Remote load gauges live on the provider; locally we only see them on fallback.
+    if (this.servedBy === "local" && this.local) return this.local.loadStats?.() ?? {};
+    return {};
+  }
+
+  profilerSnapshot(): unknown {
+    return this.enableProfile && profiler.isEnabled()
+      ? profiler.exportJSON({ includeRecentEvents: true })
+      : null;
+  }
+
+  async dispose(): Promise<void> {
+    try {
+      profiler.disable();
+    } catch {
+      /* ignore */
+    }
+    // Same process/worker whether we delegated or fell back, so one close() suffices.
+    await close().catch(() => {});
+  }
+}
+
+/**
+ * The ONE place that chooses an engine. The CLI calls only this + the interface.
  */
 export function createEngine(opts: EngineOptions = {}): InferenceEngine {
   const kind = opts.kind ?? "local";
@@ -183,14 +358,7 @@ export function createEngine(opts: EngineOptions = {}): InferenceEngine {
     case "local":
       return new LocalEngine(opts);
     case "delegated":
-      // ── DAY 2 PLUGS IN HERE ──────────────────────────────────────────────
-      // return new DelegatedEngine(opts);
-      // Same InferenceEngine interface; internally uses QVAC's
-      //   loadModel({ ..., delegate })  +  startQVACProvider({ topic })
-      // with fallbackToLocal. The CLI below needs ZERO changes.
-      throw new Error(
-        "DelegatedEngine arrives on Day 2 (P2P delegated inference). Plug it into createEngine() in engine.ts.",
-      );
+      return new DelegatedEngine(opts);
     default:
       throw new Error(`Unknown engine kind: ${String(kind)}`);
   }
