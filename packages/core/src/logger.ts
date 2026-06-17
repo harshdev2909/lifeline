@@ -156,6 +156,25 @@ export interface TtsEvent {
   out_path: string;
 }
 
+export interface MedbenchRow {
+  model: string;
+  question: string;
+  ttft_ms?: number;
+  tokens_per_sec?: number;
+  completion_tokens?: number;
+  total_ms: number;
+  backend_device?: string;
+  answer: string;
+}
+export interface MedbenchEvent {
+  type: "medbench";
+  ts: string;
+  corpus: string;
+  embed_model: string;
+  note: string;
+  rows: MedbenchRow[];
+}
+
 export type EvidenceEvent =
   | SessionEvent
   | ModelLoadEvent
@@ -169,7 +188,8 @@ export type EvidenceEvent =
   | RagSearchEvent
   | SafetyEvent
   | SttEvent
-  | TtsEvent;
+  | TtsEvent
+  | MedbenchEvent;
 
 function defaultEvidenceDir(): string {
   if (process.env.LIFELINE_EVIDENCE_DIR) return process.env.LIFELINE_EVIDENCE_DIR;
@@ -270,6 +290,10 @@ export class RunLogger {
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {
     this.write({ type: "tts", ts: new Date().toISOString(), ...args });
+  }
+
+  medbench(args: Omit<MedbenchEvent, "type" | "ts">): void {
+    this.write({ type: "medbench", ts: new Date().toISOString(), ...args });
   }
 
   /** Latest event of a given type, for building the human-readable summary. */

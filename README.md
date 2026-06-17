@@ -68,7 +68,11 @@ Every run writes an auditable JSONL log to **`evidence/run-<ISO timestamp>.jsonl
 per line: `session`, `model_load`, `inference`, `model_unload`, `sdk_profile`). A sample run is
 committed at [`evidence/run-sample.jsonl`](./evidence/run-sample.jsonl); the rest are gitignored.
 Each numeric field is explicitly labelled **measured (by us, wall-clock)** vs **SDK-reported
-(by QVAC)**.
+(by QVAC)**. *Measured TTFT* is the wall-clock time from our request until the first streamed
+token reaches the CLI (includes our overhead); *SDK-reported TTFT* is QVAC's own internal
+time-to-first-token — so SDK TTFT is always ≤ measured, and the gap is our harness overhead.
+(For reasoning models like MedPsy we emit the clean final answer in one block, so *measured*
+TTFT there reflects full-answer latency, not first-token — SDK TTFT remains the true value.)
 
 ### Model cache / storage
 QVAC stores its model registry corestore + downloaded weights under `HOME_DIR/.qvac`. To keep
@@ -143,9 +147,42 @@ the topic is a pre-shared secret. Use `--provider-key <hex>` to target a specifi
 - **Fallback:** a `heartbeat()` liveness probe; on failure the engine runs a local model and logs a
   `fallback` event. New evidence event types: `delegation`, `fallback`, `bench`.
 
-**Day 3 plugs in here:** the medical vertical (MedGemma + RAG) reuses the *same*
-`InferenceEngine`/`createEngine()` — a RAG step builds the prompt, then `engine.complete()` runs
-locally **or** delegated unchanged. Model already wired: `--model medgemma4b`.
+## Grounded medical triage support (Day 3)
+
+A medical question is answered by **MedPsy-4B** reasoning over passages retrieved from an
+offline, CC0 field-first-aid manual (RAG) — with source citations, a safety layer, and the
+same local-or-delegated engine.
+
+```bash
+# Grounded, cited answer from the local manual (runs MedPsy-4B on-device):
+./lifeline ask --model medpsy4b --rag corpus/ "How should I treat heat stroke in the field?"
+
+# Same, but run MedPsy on a peer (retrieval stays local, completion is delegated):
+./lifeline ask --model medpsy4b --rag corpus/ --delegate --topic meddemo "How do I treat severe bleeding?"
+
+# MedPsy-4B vs MedGemma-4B on grounded questions (latency/efficiency + answers):
+./lifeline medbench --rag corpus/
+```
+
+- **Models:** `--model medpsy4b` (MedPsy-4B Q4_K_M, the hero, from HF) or `medgemma4b` (registry).
+  MedPsy is a reasoning model; Lifeline surfaces its clean thinking-stripped answer.
+- **RAG:** `core/rag.ts` `KnowledgeBase` over QVAC's built-in HyperDB workspace —
+  chunk → `embed()` (EmbeddingGemma-300M, 768-d) → `ragSaveEmbeddings` (source encoded in the
+  doc id) → `ragSearch`. **Retrieval runs locally**; only the LLM completion is delegated.
+- **Safety (`core/safety.ts`, code-enforced):** a non-removable disclaimer on every answer; a
+  red-flag detector that leads with "seek emergency care now" for life-threatening queries; and a
+  grounding guard that **refuses** (no model call) when retrieval finds nothing relevant
+  (top score < 0.52) rather than hallucinating.
+- **Citations:** answers cite `[S1]`, `[S2]`… mapped to a printed **Sources** list (manual § section + score).
+- **Corpus:** [`corpus/field-first-aid.md`](./corpus/field-first-aid.md), original **CC0** content;
+  provenance + license in [`corpus/SOURCE.md`](./corpus/SOURCE.md). No copyrighted text committed.
+- **Evidence:** new `rag_ingest`, `rag_search`, `safety`, `medbench` events alongside `inference`/`delegation`.
+
+**Day 4 plugs in here:** vision/OCR uses a *separate* multimodal model (MedPsy is text-only) —
+load a `GEMMA4_*_MULTIMODAL` model (already in the QVAC registry) behind the same engine and add an
+`--image` path that attaches an image to the completion; the Raspberry Pi node runs the existing
+`serve` command (Node/Bare) as another provider; prompt-injection hardening wraps the delegated
+path (sanitize retrieved passages + the system-prompt boundary in `core/rag.ts`/`safety.ts`).
 
 ### Repo layout
 ```

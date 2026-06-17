@@ -11,6 +11,7 @@
  *   lifeline serve --topic T [--model m] [--seed hex] [--no-warm]
  *   lifeline bench "<q>" (--topic T | --provider-key K) [--model m] [--json]
  */
+import { writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -103,9 +104,10 @@ const USAGE = `
 Lifeline — offline-first, on-device AI mesh (QVAC). All inference local or P2P-delegated; no cloud.
 
 Commands:
-  ask "<prompt>"     Run a completion. Add --delegate to offload to a peer.
+  ask "<prompt>"     Run a completion. Add --rag for grounded medical answers; --delegate to offload to a peer.
   serve              Host a model over P2P for peers to delegate to.
   bench "<prompt>"   Run the same prompt local AND delegated; print a comparison.
+  medbench           Run grounded medical Qs through MedPsy-4B vs MedGemma-4B (--rag <corpus> required).
 
 ask options:
   --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
@@ -569,6 +571,128 @@ function printBench(local: BenchRow, delegated: BenchRow, evidencePath: string):
   process.stderr.write(`\n  Evidence: ${evidencePath}\n\n`);
 }
 
+// ============================ medbench ============================
+const MEDBENCH_QUESTIONS = ["How do I treat severe bleeding?", "What should I do for a burn?"];
+
+interface MedRow {
+  model: string;
+  question: string;
+  ttft_ms?: number;
+  tokens_per_sec?: number;
+  completion_tokens?: number;
+  total_ms: number;
+  backend_device?: string;
+  answer: string;
+}
+
+async function runMedbench(args: Args): Promise<void> {
+  const { flags } = args;
+  const json = fbool(flags, "json");
+  if (json) setSdkConsole(false);
+  setupQvacEnv("consumer");
+
+  const ragPath = fstr(flags, "rag");
+  if (!ragPath) throw new Error("medbench needs --rag <corpus>");
+  const maxTokens = fnum(flags, "max-tokens") ?? 256;
+  const topK = fnum(flags, "top-k") ?? 4;
+  const questions = args.positionals.length ? [args.positionals.join(" ")] : MEDBENCH_QUESTIONS;
+
+  const medpsy: ModelRef = MODELS.medpsy4b;
+  const medgemma: ModelRef = MODELS.medgemma4b;
+  const benchModels: ModelRef[] = [
+    { ...medpsy, config: { ...medpsy.config, predict: 768 } },
+    { ...medgemma, config: { ...medgemma.config, predict: maxTokens } },
+  ];
+
+  const sysinfo = collectSysInfo();
+  const logger = new RunLogger({ dir: fstr(flags, "evidence-dir") });
+  logger.session("medbench", sysinfo);
+
+  const kb = new KnowledgeBase({ onProgress: makeProgressReporter(json) });
+  const engine = createEngine({ kind: "local", onProgress: makeProgressReporter(json) });
+  const rows: MedRow[] = [];
+
+  if (!json) process.stderr.write(`\nLifeline medbench · MedPsy-4B vs MedGemma-4B · grounded in ${ragPath}\n`);
+
+  try {
+    await kb.open();
+    const ing = await kb.ingest(ragPath);
+    logger.ragIngest(ing);
+
+    const retrieved: Array<{ q: string; tagged: Array<{ tag: string; p: RetrievedPassage }> }> = [];
+    for (const q of questions) {
+      const r = await kb.retrieve(q, topK);
+      logger.ragSearch(r.stats);
+      retrieved.push({ q, tagged: r.passages.map((p, i) => ({ tag: `S${i + 1}`, p })) });
+    }
+
+    for (const model of benchModels) {
+      if (!json) process.stderr.write(`\n▶ ${model.label}\n`);
+      const modelId = await engine.loadModel({ model });
+      for (const { q, tagged } of retrieved) {
+        const messages: ChatMsg[] = [
+          { role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) },
+          { role: "user", content: q },
+        ];
+        let answer = "";
+        const measured = await runCompletion(engine, modelId, messages, false, (s) => {
+          answer += s;
+        });
+        const sdk = engine.lastStats?.() ?? null;
+        rows.push({
+          model: model.label,
+          question: q,
+          ttft_ms: sdk?.ttft_ms,
+          tokens_per_sec: sdk?.tokens_per_sec,
+          completion_tokens: sdk?.completion_tokens,
+          total_ms: Math.round(measured.total_ms),
+          backend_device: sdk?.backend_device,
+          answer: answer.trim(),
+        });
+        if (!json) process.stderr.write(`  ✓ "${q.slice(0, 38)}…"  ${num(sdk?.tokens_per_sec)} tok/s · ${sdk?.completion_tokens ?? "?"} tokens · ${Math.round(measured.total_ms)} ms\n`);
+      }
+      await engine.unload(modelId);
+    }
+  } finally {
+    await kb.close();
+    await engine.dispose?.();
+  }
+
+  const note =
+    "On-device latency / token-efficiency + qualitative answers. NOT a validated accuracy benchmark (no labeled test set).";
+  logger.medbench({ corpus: ragPath, embed_model: kb.embedLabel, note, rows });
+  const md = renderMedbenchMd(questions, rows, note);
+  const mdPath = logger.path.replace(/run-(.*)\.jsonl$/, "medbench-$1.md");
+  writeFileSync(mdPath, md);
+
+  if (json) {
+    process.stdout.write(JSON.stringify({ rows, evidence: logger.path, markdown: mdPath }) + "\n");
+    return;
+  }
+  process.stdout.write("\n" + md + "\n");
+  process.stderr.write(`  Evidence: ${logger.path}\n  Table: ${mdPath}\n\n`);
+}
+
+function renderMedbenchMd(questions: string[], rs: MedRow[], note: string): string {
+  const lines: string[] = ["# Lifeline medbench — MedPsy-4B vs MedGemma-4B", "", `> ${note}`, ""];
+  lines.push("## Latency / efficiency (on-device)", "");
+  lines.push("| Question | Model | TTFT ms | tok/s | tokens | total ms | backend |");
+  lines.push("|---|---|--:|--:|--:|--:|:--|");
+  for (const r of rs) {
+    lines.push(
+      `| ${r.question} | ${r.model} | ${num(r.ttft_ms, 0)} | ${num(r.tokens_per_sec, 1)} | ${r.completion_tokens ?? "?"} | ${r.total_ms} | ${r.backend_device ?? "?"} |`,
+    );
+  }
+  lines.push("", "## Answers (qualitative)", "");
+  for (const q of questions) {
+    lines.push(`### ${q}`, "");
+    for (const r of rs.filter((x) => x.question === q)) {
+      lines.push(`**${r.model}:**`, "", r.answer, "");
+    }
+  }
+  return lines.join("\n");
+}
+
 // ============================ main ============================
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -585,6 +709,9 @@ async function main(): Promise<void> {
       break;
     case "bench":
       await runBench(args);
+      break;
+    case "medbench":
+      await runMedbench(args);
       break;
     default:
       process.stderr.write(`Unknown command "${args.command}". Run with --help.\n`);
