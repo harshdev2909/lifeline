@@ -1,0 +1,22 @@
+{
+  "name": "@lifeline/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Lifeline local bridge: a localhost-only WebSocket + HTTP API over @lifeline/core for the browser UI. Does zero inference itself and never imports the model SDK.",
+  "main": "./src/main.ts",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@lifeline/core": "0.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13"
+  }
+}
