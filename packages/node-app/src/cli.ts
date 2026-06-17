@@ -32,6 +32,7 @@ import {
   setSdkConsole,
   topicToProviderKey,
   topicToSeedHex,
+  transcribeAudio,
   ungroundedRefusal,
 } from "@lifeline/core";
 import type {
@@ -110,6 +111,7 @@ Commands:
   medbench           Run grounded medical Qs through MedPsy-4B vs MedGemma-4B (--rag <corpus> required).
 
 ask options:
+  --audio <wavfile>          Voice in: transcribe speech (Whisper, local) and use it as the prompt
   --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
   --top-k <n>                Passages to retrieve (default: 4)
   --model <key>              ${Object.keys(MODELS).join(" | ")}  (default: llama1b; medical: medpsy4b)
@@ -214,8 +216,9 @@ async function runAsk(args: Args): Promise<void> {
   const delegate = fbool(flags, "delegate");
   setupQvacEnv("consumer");
 
-  const prompt = args.positionals.join(" ");
-  if (!prompt.trim()) throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid"');
+  let prompt = args.positionals.join(" ");
+  const audioPath = fstr(flags, "audio");
+  if (!prompt.trim() && !audioPath) throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav>)');
 
   const model = resolveModel(flags);
   const stream = !fbool(flags, "no-stream");
@@ -253,6 +256,16 @@ async function runAsk(args: Args): Promise<void> {
     process.stderr.write(`\nLifeline · ${engine.kind} engine${delegate ? ` · topic "${topic ?? "—"}"` : ""} · no cloud\n`);
     process.stderr.write(formatSysInfoTable(sysinfo) + "\n");
     if (delegate) process.stderr.write(`  Provider key: ${providerKey}\n`);
+  }
+
+  // ---- Voice in (LOCAL STT), if --audio ----
+  if (audioPath) {
+    if (!json) process.stderr.write(`🎤 transcribing ${audioPath} (Whisper, LOCAL) …\n`);
+    const stt = await transcribeAudio(audioPath, { onProgress: makeProgressReporter(json) });
+    prompt = stt.text || prompt;
+    logger.stt({ model: stt.model, audio_seconds: stt.audio_seconds, transcribe_ms: stt.transcribe_ms, text_chars: prompt.length });
+    if (!json) process.stderr.write(`  ✓ heard (${stt.transcribe_ms} ms): "${prompt}"\n`);
+    if (!prompt.trim()) throw new Error("transcription produced no text");
   }
 
   // ---- RAG retrieval (LOCAL) + safety, if --rag ----

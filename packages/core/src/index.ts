@@ -28,6 +28,9 @@ export { topicToSeedHex, topicToProviderKey, seedHexToProviderKey } from "./p2p"
 export { setSdkConsole, setSdkLogLevel } from "./sdklog";
 export type { SdkLogLevel } from "./sdklog";
 
+export { transcribeAudio } from "./voice";
+export type { TranscribeResult, TranscribeOptions } from "./voice";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,
