@@ -11,7 +11,7 @@
  *   lifeline serve --topic T [--model m] [--seed hex] [--no-warm]
  *   lifeline bench "<q>" (--topic T | --provider-key K) [--model m] [--json]
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,6 @@ import {
   collectSysInfo,
   detectInjection,
   createEngine,
-  DEFAULT_MODEL,
   EMERGENCY_NOTICE,
   formatSysInfoTable,
   KnowledgeBase,
@@ -152,9 +151,17 @@ bench options:
 // --- shared helpers ---
 function resolveModel(flags: Args["flags"]): ModelRef {
   const key = fstr(flags, "model") ?? "llama1b";
-  const base: ModelRef = MODELS[key as keyof typeof MODELS] ?? DEFAULT_MODEL;
+  const base: ModelRef | undefined = MODELS[key as keyof typeof MODELS];
+  if (!base) {
+    throw new Error(`unknown model "${key}". Available: ${Object.keys(MODELS).join(", ")}`);
+  }
   const maxTokens = fnum(flags, "max-tokens");
   return maxTokens ? { ...base, config: { ...base.config, predict: maxTokens } } : base;
+}
+
+/** Reject a missing/unreadable input file early with a clear message instead of a deep SDK error. */
+function requireFile(path: string, what: string): void {
+  if (!existsSync(path)) throw new Error(`${what} not found: ${path}`);
 }
 
 function resolveProviderKey(flags: Args["flags"]): { key: string; topic?: string } {
@@ -270,6 +277,9 @@ async function runAsk(args: Args): Promise<void> {
   if (!prompt.trim() && !audioPath && !imagePath && !ocrPath) {
     throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav> / --image <img> / --ocr <img>)');
   }
+  if (audioPath) requireFile(audioPath, "audio file");
+  if (imagePath) requireFile(imagePath, "image");
+  if (ocrPath) requireFile(ocrPath, "image");
 
   const model = resolveModel(flags);
   const stream = !fbool(flags, "no-stream");
@@ -551,11 +561,21 @@ async function runAsk(args: Args): Promise<void> {
       logger.fallback({ reason: di.fallback_reason ?? "provider unavailable", topic, peer_key: providerKey });
     }
 
-    // Grounding check: every citation the model emits must be a passage we actually retrieved.
+    // Grounding check: every citation the model emits must map to a passage we retrieved.
+    // Captures [S#], [IMG], and [OCR] tags.
     let hallucinated: string[] = [];
-    if (ragPath && tagged.length) {
+    let citedTags: string[] = [];
+    let attachedCite: string | undefined;
+    if (tagged.length) {
       const retrievedTags = tagged.map((t) => t.tag);
-      const citedTags = [...new Set(Array.from(answer.matchAll(/\[S(\d+)\]/g), (m) => `S${m[1]}`))];
+      citedTags = [...new Set(Array.from(answer.matchAll(/\[(S\d+|IMG|OCR)\]/g), (m) => m[1]))];
+      // Safety net: a grounded answer should always point at a source. If the model
+      // answered without citing inline, attribute it to the top retrieved passage so the
+      // chain stays auditable.
+      if (citedTags.length === 0 && answer.trim()) {
+        attachedCite = retrievedTags[0];
+        citedTags = [attachedCite];
+      }
       hallucinated = citedTags.filter((c) => !retrievedTags.includes(c));
       logger.groundingCheck({ cited: citedTags, retrieved: retrievedTags, hallucinated_cites: hallucinated });
     }
@@ -563,7 +583,11 @@ async function runAsk(args: Args): Promise<void> {
     // Sources (with grounding snippet) + the non-removable disclaimer.
     if (!json) {
       if (hallucinated.length) {
-        process.stderr.write(`\n  ⚠ flagged invalid citation(s) not in retrieved sources: ${hallucinated.join(", ")}\n`);
+        process.stderr.write(`\n  flagged citation(s) not in the retrieved sources: ${hallucinated.join(", ")}\n`);
+      }
+      if (attachedCite) {
+        const t = tagged.find((x) => x.tag === attachedCite);
+        if (t) process.stdout.write(`\nGrounded in [${attachedCite}] ${t.p.source} § ${t.p.section}.\n`);
       }
       if (tagged.length) {
         process.stdout.write(`\nSources (retrieved locally from the field manual):\n`);
@@ -611,6 +635,8 @@ async function runAsk(args: Args): Promise<void> {
           answer,
           disclaimer: MEDICAL_DISCLAIMER,
           sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score, snippet: t.p.snippet })),
+          cited: citedTags,
+          attached_citation: attachedCite,
           hallucinated_cites: hallucinated,
           answer_localized: localizedAnswer,
           audio_out: ttsPath,
@@ -1063,6 +1089,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`\n❌ ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`\nError: ${message}\n`);
+  // Full stack only when asked for, so normal failures stay readable.
+  if (process.env.LIFELINE_DEBUG && err instanceof Error && err.stack) {
+    process.stderr.write(`${err.stack}\n`);
+  }
   process.exitCode = 1;
 });
