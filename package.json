@@ -4,7 +4,26 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Lifeline — offline-first, peer-to-peer AI mesh of everyday devices.",
+  "description": "Offline-first first-aid assistant: grounded medical answers on-device, with peer-to-peer model delegation.",
+  "author": "Harsh Sharma <harsh.dev2909@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshsharma/lifeline.git"
+  },
+  "homepage": "https://github.com/harshsharma/lifeline#readme",
+  "bugs": "https://github.com/harshsharma/lifeline/issues",
+  "keywords": [
+    "offline-first",
+    "on-device",
+    "edge-ai",
+    "peer-to-peer",
+    "first-aid",
+    "medical",
+    "rag",
+    "llm",
+    "privacy",
+    "qvac"
+  ],
   "workspaces": [
     "packages/core",
     "packages/node-app"
@@ -20,6 +39,7 @@
     "bench": "tsx packages/node-app/src/cli.ts bench",
     "prefetch:embeddings": "node scripts/prefetch-embeddings.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test packages/core/test/*.test.ts",
     "demo": "bash scripts/demo.sh"
   },
   "devDependencies": {

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Lifeline laptop orchestrator CLI. Talks ONLY to @lifeline/core's InferenceEngine.",
+  "description": "Lifeline CLI. Depends only on @lifeline/core; never imports the model SDK directly.",
   "bin": {
     "lifeline": "./bin/lifeline.mjs"
   },

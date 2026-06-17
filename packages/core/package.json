@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Lifeline core: engine abstraction (Local + future Delegated), evidence logger, sysinfo.",
+  "description": "Lifeline core: the InferenceEngine abstraction (local and delegated), retrieval, safety, the modality helpers, and the evidence logger.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
