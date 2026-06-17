@@ -29,3 +29,6 @@ evidence/*.wav
 
 # test image binaries are tiny + synthetic — keep them
 !corpus/test-images/*.bmp
+
+# Local UI bridge settings (model/language/peers/theme), written at runtime.
+.lifeline-ui.json

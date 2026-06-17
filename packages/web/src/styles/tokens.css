@@ -1,0 +1,97 @@
+/*
+ * Design tokens — the single source of truth for color. Mood: instrument-grade
+ * calm (clinical trust + field resilience + quiet confidence). Dark is the hero
+ * theme; light is a refined companion. Tailwind (tailwind.config.ts) maps these
+ * variables onto utilities, so changing a value here changes it everywhere.
+ *
+ * Contrast: every text/background pair below targets WCAG AA. The accent is used
+ * sparingly — reserved for live state, focus, and the single primary action.
+ * The three state hues (local / remote / emergency) each mean exactly one thing,
+ * so a color is never decorative: red always signals an emergency, amber always
+ * signals work delegated to a peer, blue always signals answered on this device.
+ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces — depth comes from layered tones, not heavy drop shadows. */
+  --bg-base: #0a0d0e;
+  --bg-surface: #111517;
+  --bg-raised: #181d20;
+  --bg-overlay: rgba(6, 9, 10, 0.74);
+
+  /* Hairline borders — preferred over shadows. */
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Ink. */
+  --text-primary: #ecefee;
+  --text-secondary: #9ba5a2;
+  --text-tertiary: #5f6a66;
+
+  /* Accent — "alive / connected". Jade. */
+  --accent: #2fc18c;
+  --accent-hover: #45cf9d;
+  --accent-pressed: #169e73;
+  --accent-contrast: #04140e;
+  --accent-soft: rgba(47, 193, 140, 0.12);
+  --accent-line: rgba(47, 193, 140, 0.32);
+
+  /* State — answered on this device. */
+  --local: #7fa6d9;
+  --local-soft: rgba(127, 166, 217, 0.14);
+  --local-line: rgba(127, 166, 217, 0.34);
+
+  /* State — delegated to a peer. */
+  --remote: #e6a23c;
+  --remote-soft: rgba(230, 162, 60, 0.14);
+  --remote-line: rgba(230, 162, 60, 0.34);
+
+  /* State — emergency (reserved; red always means something). */
+  --emergency: #e5484d;
+  --emergency-soft: rgba(229, 72, 77, 0.14);
+  --emergency-line: rgba(229, 72, 77, 0.4);
+  --emergency-contrast: #2a0708;
+
+  --focus: var(--accent);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-base: #eef1f0;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-overlay: rgba(18, 26, 24, 0.42);
+
+  --border: rgba(12, 22, 20, 0.1);
+  --border-strong: rgba(12, 22, 20, 0.16);
+
+  --text-primary: #0e1513;
+  --text-secondary: #44504c;
+  --text-tertiary: #79847f;
+
+  /* Jade deepened so it clears AA as text and as a filled button on white. */
+  --accent: #0f8a62;
+  --accent-hover: #0c7a56;
+  --accent-pressed: #0a5f43;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(15, 138, 98, 0.1);
+  --accent-line: rgba(15, 138, 98, 0.28);
+
+  --local: #3a6cae;
+  --local-soft: rgba(58, 108, 174, 0.1);
+  --local-line: rgba(58, 108, 174, 0.3);
+
+  --remote: #a4640f;
+  --remote-soft: rgba(164, 100, 15, 0.1);
+  --remote-line: rgba(164, 100, 15, 0.3);
+
+  --emergency: #c5343a;
+  --emergency-soft: rgba(197, 52, 58, 0.1);
+  --emergency-line: rgba(197, 52, 58, 0.32);
+  --emergency-contrast: #ffffff;
+
+  --focus: var(--accent);
+}

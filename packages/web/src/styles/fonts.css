@@ -1,0 +1,17 @@
+/*
+ * Self-hosted fonts (Geist Sans + Geist Mono), latin subset, bundled by Vite.
+ * No Google Fonts, no runtime CDN — these woff2 files ship inside the app and
+ * load with the network fully off. Only the weights the UI actually uses are
+ * imported, to keep the bundle lean.
+ *
+ * Geist Sans: UI + body.  Geist Mono: every numeric/technical readout
+ * (metrics, latencies, tokens/sec, public keys, model names, timestamps).
+ */
+@import "@fontsource/geist-sans/latin-400.css";
+@import "@fontsource/geist-sans/latin-500.css";
+@import "@fontsource/geist-sans/latin-600.css";
+@import "@fontsource/geist-sans/latin-700.css";
+
+@import "@fontsource/geist-mono/latin-400.css";
+@import "@fontsource/geist-mono/latin-500.css";
+@import "@fontsource/geist-mono/latin-600.css";

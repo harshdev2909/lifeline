@@ -26,7 +26,9 @@
   ],
   "workspaces": [
     "packages/core",
-    "packages/node-app"
+    "packages/node-app",
+    "packages/server",
+    "packages/web"
   ],
   "engines": {
     "node": ">=22.17"
@@ -38,8 +40,11 @@
     "serve": "tsx packages/node-app/src/cli.ts serve",
     "bench": "tsx packages/node-app/src/cli.ts bench",
     "prefetch:embeddings": "node scripts/prefetch-embeddings.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test packages/core/test/*.test.ts",
+    "bridge": "tsx packages/server/src/main.ts",
+    "web": "npm run dev --workspace @lifeline/web",
+    "ui": "node scripts/ui.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck --workspace @lifeline/web",
+    "test": "node --import tsx --test packages/core/test/*.test.ts packages/server/test/*.test.ts",
     "demo": "bash scripts/demo.sh"
   },
   "devDependencies": {

@@ -1,0 +1,102 @@
+@import "./tokens.css";
+@import "./fonts.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-base text-fg font-sans antialiased;
+    font-feature-settings: "cv01", "ss01";
+  }
+
+  /* Mono numerals are tabular everywhere — the signature craft detail. */
+  .font-mono {
+    font-feature-settings: "tnum", "zero", "cv01";
+    font-variant-numeric: tabular-nums slashed-zero;
+  }
+
+  /* One consistent, visible focus ring — never removed. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--text-primary);
+  }
+
+  /* Quiet, on-theme scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-tertiary);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Hairline grid backdrop used behind the mesh visualizer and empty states. */
+  .bg-grid {
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: center;
+  }
+
+  .hairline-t {
+    border-top: 1px solid var(--border);
+  }
+}
+
+/*
+ * Reduced motion: keep meaning, drop the kinetics. Decorative loops (breathing
+ * nodes, travelling pulses) collapse to a calm steady state; functional
+ * transitions shorten rather than vanish. Components that animate narrative mesh
+ * events also branch on this via a hook, swapping travel for a clean cross-fade.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 120ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-breathe,
+  .animate-pulse-ring {
+    animation: none !important;
+    opacity: 0.85 !important;
+  }
+}

@@ -1,0 +1,13 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Lifeline">
+  <!-- One stroke: a heartbeat pulse whose end resolves into a connected mesh.
+       Bold + single-tone jade so it stays legible at 16px on any tab color. -->
+  <g stroke="#2FC18C" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 16 H10 l2.3 -9 l2.6 13.5 l2.1 -7.5" fill="none" />
+    <path d="M17 13 L24 8.5 M24 8.5 L27 16.5 M27 16.5 L17 13" fill="none" />
+  </g>
+  <g fill="#2FC18C">
+    <circle cx="17" cy="13" r="2.4" />
+    <circle cx="24" cy="8.5" r="2.4" />
+    <circle cx="27" cy="16.5" r="2.4" />
+  </g>
+</svg>

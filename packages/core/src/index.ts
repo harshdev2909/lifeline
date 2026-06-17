@@ -26,6 +26,9 @@ export type { FirewallConfig, ProviderOptions } from "./provider";
 
 export { topicToSeedHex, topicToProviderKey, seedHexToProviderKey } from "./p2p";
 
+export { probePeer, probePeers, closeSdkWorker } from "./mesh";
+export type { ProbeOptions } from "./mesh";
+
 export { setSdkConsole, setSdkLogLevel } from "./sdklog";
 export type { SdkLogLevel } from "./sdklog";
 

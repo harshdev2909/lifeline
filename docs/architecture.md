@@ -69,6 +69,14 @@ Numeric fields are labelled as measured (wall-clock, by Lifeline) or SDK-reporte
 
 Representative logs are checked in under [`examples/logs/`](../examples/logs).
 
+## Web interface and the bridge
+
+The CLI is one consumer of `core`; the web interface is another, split in two: a localhost bridge (`packages/server`) and a browser app (`packages/web`).
+
+The bridge wraps the same engine, retrieval, safety, and modality chain the CLI uses and exposes them over a WebSocket — streaming a turn's answer tokens, separated reasoning, citations, per-turn telemetry, the served-by indicator, mesh routing, fallback, and safety events — plus a small HTTP API for settings, a mesh snapshot and on-demand peer probe, raw-body uploads for image and audio, and generated speech. It is the event-driven sibling of the CLI's `ask`: where the CLI writes to a terminal, the bridge emits structured events. It runs each turn as a full lifecycle, serialized one at a time so a single QVAC worker and corestore are never contended, and writes the same evidence log. It imports only `@lifeline/core`, so the SDK boundary holds: the bridge does no inference, and the browser does none either.
+
+The browser app talks only to that bridge, over localhost. It is bundled with its fonts and assets self-hosted, so it loads and runs with the network off; the bridge serves the built app from a single origin. On-demand peer liveness for the mesh visualizer uses `probePeers` in `core/mesh.ts`, which wraps the same heartbeat the delegated engine uses during routing, so the mesh shows real status rather than a guess.
+
 ## Storage
 
 QVAC keeps its model registry and downloaded weights under a home directory. Lifeline points that at a repo-local `.qvac-home/` (and `.qvac-home-consumer/` for a consumer process on the same machine) via the SDK's `SNAP_USER_COMMON` override, so weights stay off a small home disk and next to the project. A second or third provider on one machine can be given its own corestore with `serve --home <dir>`.
