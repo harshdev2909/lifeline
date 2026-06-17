@@ -28,6 +28,24 @@ export { topicToSeedHex, topicToProviderKey, seedHexToProviderKey } from "./p2p"
 export { setSdkConsole, setSdkLogLevel } from "./sdklog";
 export type { SdkLogLevel } from "./sdklog";
 
+export { KnowledgeBase } from "./rag";
+export type {
+  KnowledgeBaseOptions,
+  RetrievedPassage,
+  IngestStats,
+  SearchStats,
+} from "./rag";
+
+export {
+  assessSafety,
+  detectRedFlags,
+  buildGroundedSystemPrompt,
+  ungroundedRefusal,
+  MEDICAL_DISCLAIMER,
+  EMERGENCY_NOTICE,
+} from "./safety";
+export type { SafetyAction, SafetyResult } from "./safety";
+
 export { RunLogger } from "./logger";
 export type {
   BenchEvent,

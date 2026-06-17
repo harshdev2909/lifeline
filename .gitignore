@@ -27,3 +27,6 @@ evidence/*.jsonl
 !evidence/run-sample-delegated.jsonl
 !evidence/run-sample-bench.jsonl
 !evidence/run-sample-fallback.jsonl
+!evidence/run-sample-rag-grounded.jsonl
+!evidence/run-sample-rag-refuse.jsonl
+!evidence/run-sample-rag-delegated.jsonl

@@ -31,6 +31,12 @@ export interface ModelRef {
   type: string;
   /** Optional backend `modelConfig` (ctx_size, temp, predict, ...). */
   config?: Record<string, unknown>;
+  /**
+   * True for chain-of-thought models (e.g. MedPsy). Their live token stream
+   * includes `<think>` reasoning; the engine instead emits the SDK's clean,
+   * thinking-stripped final content for these (a brief pause, then the answer).
+   */
+  reasoning?: boolean;
 }
 
 /**

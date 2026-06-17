@@ -16,16 +16,22 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  assessSafety,
+  buildGroundedSystemPrompt,
   collectSysInfo,
   createEngine,
   DEFAULT_MODEL,
+  EMERGENCY_NOTICE,
   formatSysInfoTable,
+  KnowledgeBase,
+  MEDICAL_DISCLAIMER,
   MODELS,
   Provider,
   RunLogger,
   setSdkConsole,
   topicToProviderKey,
   topicToSeedHex,
+  ungroundedRefusal,
 } from "@lifeline/core";
 import type {
   BenchRow,
@@ -35,7 +41,16 @@ import type {
   InferenceEngine,
   MeasuredInference,
   ModelRef,
+  RetrievedPassage,
+  SafetyResult,
 } from "@lifeline/core";
+
+/**
+ * Grounding threshold (calibrated empirically against the corpus): the top
+ * retrieved passage must score at least this to count as "grounded". QVAC's
+ * embedding similarity score is higher = more relevant.
+ */
+const GROUNDING_MIN_SCORE = 0.52;
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const DEFAULT_SYSTEM = "You are Lifeline, a concise, careful offline assistant. Answer directly.";
@@ -93,12 +108,16 @@ Commands:
   bench "<prompt>"   Run the same prompt local AND delegated; print a comparison.
 
 ask options:
-  --delegate                 Offload to a provider (falls back to local if unreachable)
+  --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
+  --top-k <n>                Passages to retrieve (default: 4)
+  --model <key>              ${Object.keys(MODELS).join(" | ")}  (default: llama1b; medical: medpsy4b)
+  --delegate                 Offload completion to a provider (falls back to local if unreachable)
   --topic <t>                Rendezvous topic (derives the provider's key on both sides)
   --provider-key <hex>       Target a specific provider public key (overrides --topic)
-  --model <key>              ${Object.keys(MODELS).join(" | ")}  (default: llama1b)
   --system "<text>" | --no-stream | --max-tokens <n>
   --timeout <ms> | --health-timeout <ms> | --json | --evidence-dir <dir>
+  Medical grounding adds a safety layer: red-flag emergency notice, source citations,
+  a non-removable disclaimer, and refusal when the corpus has no relevant guidance.
 
 serve options:
   --topic <t>                Rendezvous topic → deterministic provider identity (recommended)
@@ -199,7 +218,11 @@ async function runAsk(args: Args): Promise<void> {
   const model = resolveModel(flags);
   const stream = !fbool(flags, "no-stream");
   const system = fstr(flags, "system") ?? DEFAULT_SYSTEM;
-  const out = (s: string) => (json ? undefined : process.stdout.write(s));
+  const ragPath = fstr(flags, "rag");
+  const topK = fnum(flags, "top-k") ?? fnum(flags, "topK") ?? 4;
+  const out = (s: string) => {
+    if (!json) process.stdout.write(s);
+  };
 
   let providerKey: string | undefined;
   let topic: string | undefined;
@@ -228,10 +251,59 @@ async function runAsk(args: Args): Promise<void> {
     process.stderr.write(`\nLifeline · ${engine.kind} engine${delegate ? ` · topic "${topic ?? "—"}"` : ""} · no cloud\n`);
     process.stderr.write(formatSysInfoTable(sysinfo) + "\n");
     if (delegate) process.stderr.write(`  Provider key: ${providerKey}\n`);
-    process.stderr.write(`  Loading model: ${model.label} …\n`);
   }
 
+  // ---- RAG retrieval (LOCAL) + safety, if --rag ----
+  let kb: KnowledgeBase | undefined;
+  let passages: RetrievedPassage[] = [];
+  let safety: SafetyResult = { red_flag: false, red_flag_terms: [], grounded: true, action: "answer" };
   try {
+    if (ragPath) {
+      kb = new KnowledgeBase({ onProgress: makeProgressReporter(json) });
+      if (!json) process.stderr.write(`📚 Knowledge base: ${ragPath} (embeddings: ${kb.embedLabel}, LOCAL)\n`);
+      await kb.open();
+      const ing = await kb.ingest(ragPath);
+      logger.ragIngest(ing);
+      if (!json) process.stderr.write(`  ✓ ingested ${ing.chunk_count} chunks / ${ing.doc_count} doc(s) in ${ing.ingest_ms} ms\n`);
+      const r = await kb.retrieve(prompt, topK);
+      passages = r.passages;
+      logger.ragSearch(r.stats);
+      const grounded = passages.length > 0 && passages[0].score >= GROUNDING_MIN_SCORE;
+      safety = assessSafety({ query: prompt, grounded });
+      logger.safety({
+        red_flag: safety.red_flag,
+        red_flag_terms: safety.red_flag_terms,
+        grounded: safety.grounded,
+        action: safety.action,
+      });
+      if (!json) {
+        process.stderr.write(`  ✓ retrieved ${passages.length} passage(s); top score ${passages[0]?.score.toFixed(2) ?? "—"}\n`);
+        process.stderr.write(`  safety: red_flag=${safety.red_flag} grounded=${safety.grounded} action=${safety.action}\n`);
+      }
+    }
+
+    // Ungrounded refusal (and NOT a red-flag emergency): never hallucinate; skip the LLM.
+    if (ragPath && safety.action === "refuse_ungrounded") {
+      const body = ungroundedRefusal();
+      if (json) {
+        process.stdout.write(
+          JSON.stringify({ served_by: "local", grounded: false, refused: true, answer: body, disclaimer: MEDICAL_DISCLAIMER, evidence: logger.path }) + "\n",
+        );
+      } else {
+        process.stdout.write(`\n${body}\n\n${MEDICAL_DISCLAIMER}\n`);
+        process.stderr.write(`\n  (no model call — retrieval found nothing relevant)\n  Evidence: ${logger.path}\n\n`);
+      }
+      return;
+    }
+
+    // Build messages: grounded (RAG) or plain.
+    const tagged = passages.map((p, i) => ({ tag: `S${i + 1}`, p }));
+    const messages: ChatMsg[] =
+      ragPath && tagged.length
+        ? [{ role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) }, { role: "user", content: prompt }]
+        : buildMessages(prompt, system);
+
+    if (!json) process.stderr.write(`  Loading model: ${model.label} …\n`);
     const tLoad0 = performance.now();
     const modelId = await engine.loadModel({ model });
     const loadMs = performance.now() - tLoad0;
@@ -247,21 +319,19 @@ async function runAsk(args: Args): Promise<void> {
     if (!json) {
       const servedNote = di.served_by === "remote" ? "remote peer" : delegate ? "local (FALLBACK)" : "local";
       process.stderr.write(`  ✓ loaded in ${loadMs.toFixed(0)} ms · served_by: ${servedNote}\n\n💬 ${prompt}\n\n`);
+      if (safety.red_flag) process.stdout.write(`${EMERGENCY_NOTICE}\n\n`);
     }
 
-    const measured = await runCompletion(engine, modelId, buildMessages(prompt, system), stream, out);
+    let answer = "";
+    const measured = await runCompletion(engine, modelId, messages, stream, (s) => {
+      answer += s;
+      out(s);
+    });
     if (!json) process.stdout.write("\n");
 
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
-    logger.inference({
-      modelId,
-      prompt_chars: prompt.length,
-      prompt_tokens: sdk?.prompt_tokens,
-      measured,
-      sdk_reported: sdk,
-    });
+    logger.inference({ modelId, prompt_chars: prompt.length, prompt_tokens: sdk?.prompt_tokens, measured, sdk_reported: sdk });
 
-    // delegation / fallback evidence
     if (di.served_by === "remote") {
       logger.delegation({
         topic,
@@ -277,6 +347,17 @@ async function runAsk(args: Args): Promise<void> {
       logger.fallback({ reason: di.fallback_reason ?? "provider unavailable", topic, peer_key: providerKey });
     }
 
+    // Sources + the non-removable disclaimer.
+    if (!json) {
+      if (tagged.length) {
+        process.stdout.write(`\nSources (retrieved locally from the field manual):\n`);
+        for (const t of tagged) {
+          process.stdout.write(`  [${t.tag}] ${t.p.source} § ${t.p.section}  (score ${t.p.score.toFixed(2)})\n`);
+        }
+      }
+      process.stdout.write(`\n${MEDICAL_DISCLAIMER}\n`);
+    }
+
     logger.sdkProfile(engine.profilerSnapshot?.());
     await engine.unload(modelId);
     logger.modelUnload(modelId);
@@ -286,6 +367,12 @@ async function runAsk(args: Args): Promise<void> {
         JSON.stringify({
           served_by: di.served_by,
           fallback: delegate && di.served_by === "local",
+          red_flag: safety.red_flag,
+          grounded: safety.grounded,
+          emergency_notice: safety.red_flag ? EMERGENCY_NOTICE : undefined,
+          answer,
+          disclaimer: MEDICAL_DISCLAIMER,
+          sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score })),
           peer_key: di.peer_key,
           transport_setup_ms: di.transport_setup_ms,
           load_ms: Math.round(loadMs),
@@ -298,6 +385,9 @@ async function runAsk(args: Args): Promise<void> {
       printAskSummary({ model, di, delegate, loadMs, measured, sdk, evidencePath: logger.path });
     }
   } finally {
+    // Close the KB (unload embedding model) BEFORE disposing the engine, since
+    // engine.dispose() closes the shared worker that the KB also uses.
+    if (kb) await kb.close();
     await engine.dispose?.();
   }
 }

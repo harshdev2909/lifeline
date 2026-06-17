@@ -34,12 +34,22 @@ import type {
   ProgressUpdate,
 } from "./types";
 
-/** Built-in QVAC registry models Lifeline knows about. */
+/** Models Lifeline knows about (QVAC registry descriptors, or HF/HTTPS GGUF URLs). */
 export const MODELS = {
   /** Small, fast default — ~773 MB, downloaded+cached on first run, offline after. */
   llama1b: { label: "Llama 3.2 1B Instruct (Q4_0)", src: LLAMA_3_2_1B_INST_Q4_0, type: "llamacpp-completion" },
-  /** Medical model from the QVAC registry — the Day 3 medical-vertical candidate. */
+  /** MedGemma — medical model from the QVAC registry (baseline for the medical vertical). */
   medgemma4b: { label: "MedGemma 4B IT (Q4_1) — medical", src: MEDGEMMA_4B_IT_Q4_1, type: "llamacpp-completion" },
+  /** MedPsy-4B — the medical hero model. Not in the QVAC registry; loaded from HF (GGUF URL).
+   *  A chain-of-thought model: we surface the SDK's clean thinking-stripped answer (see
+   *  `reasoning`), with a generous `predict` so reasoning + answer both fit. */
+  medpsy4b: {
+    label: "MedPsy-4B (Q4_K_M) — medical hero",
+    src: "https://huggingface.co/qvac/MedPsy-4B-GGUF/resolve/main/medpsy-4b-q4_k_m-imat.gguf",
+    type: "llamacpp-completion",
+    reasoning: true,
+    config: { predict: 768 },
+  },
 } satisfies Record<string, ModelRef>;
 
 export const DEFAULT_MODEL: ModelRef = MODELS.llama1b;
@@ -91,7 +101,21 @@ function errMsg(e: unknown): string {
  *  `delegate` is attached at loadModel time, so completion() is identical for both). */
 function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) {
   const history = messages.map((m) => ({ role: m.role, content: m.content }));
-  return completion({ modelId, history, stream });
+  // captureThinking routes any reasoning to thinkingDelta events so `contentDelta`
+  // (what we stream) stays clean even on reasoning models.
+  return completion({ modelId, history, stream, captureThinking: true } as Parameters<typeof completion>[0]);
+}
+
+/**
+ * Stream only the VISIBLE answer content. Reasoning models (e.g. MedPsy) emit
+ * chain-of-thought as separate `thinkingDelta` events; we surface `contentDelta`
+ * only so callers get the clean answer, not the raw `<think>` reasoning.
+ * (For non-reasoning models, all output arrives as contentDelta.)
+ */
+async function* streamContent(run: ReturnType<typeof completion>): AsyncGenerator<string> {
+  for await (const ev of run.events) {
+    if (ev.type === "contentDelta") yield ev.text;
+  }
 }
 
 export class LocalEngine implements InferenceEngine {
@@ -102,6 +126,7 @@ export class LocalEngine implements InferenceEngine {
   private unsubscribe?: () => void;
   private lastCompletionStats: CompletionStats | null = null;
   private lastLoadGauges: Record<string, number> = {};
+  private reasoning = false;
 
   constructor(opts: EngineOptions = {}) {
     this.progressCb = opts.onProgress;
@@ -114,6 +139,7 @@ export class LocalEngine implements InferenceEngine {
   }
 
   async loadModel({ model }: { model: ModelRef }): Promise<string> {
+    this.reasoning = model.reasoning ?? false;
     const before = this.records.length;
     // SDK boundary: core uses generic ModelRef types; QVAC wants narrower
     // literals (e.g. modelType "llm"). This single cast is where they meet.
@@ -139,9 +165,14 @@ export class LocalEngine implements InferenceEngine {
 
   private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
     const run = startCompletion(opts.modelId, opts.messages, true);
-    for await (const token of run.tokenStream) {
-      yield token;
+    if (this.reasoning) {
+      // Reasoning model: contentDelta leaks <think>; emit the SDK's clean final content instead.
+      const final = await run.final;
+      this.lastCompletionStats = fromQvacStats(final.stats);
+      yield final.contentText;
+      return;
     }
+    yield* streamContent(run);
     const final = await run.final.catch(() => undefined);
     this.lastCompletionStats = fromQvacStats(final?.stats);
   }
@@ -222,6 +253,7 @@ export class DelegatedEngine implements InferenceEngine {
   private transportSetupMs = 0;
   private fallbackReason?: string;
   private lastCompletionStats: CompletionStats | null = null;
+  private reasoning = false;
 
   constructor(opts: EngineOptions) {
     if (!opts.providerPublicKey) {
@@ -238,6 +270,7 @@ export class DelegatedEngine implements InferenceEngine {
   }
 
   async loadModel({ model }: { model: ModelRef }): Promise<string> {
+    this.reasoning = model.reasoning ?? false;
     // 1) Liveness probe — also establishes/warms the P2P link. Time it as transport setup.
     const t0 = performance.now();
     let online = false;
@@ -293,9 +326,13 @@ export class DelegatedEngine implements InferenceEngine {
 
   private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
     const run = startCompletion(opts.modelId, opts.messages, true);
-    for await (const token of run.tokenStream) {
-      yield token;
+    if (this.reasoning) {
+      const final = await run.final;
+      this.lastCompletionStats = fromQvacStats(final.stats);
+      yield final.contentText;
+      return;
     }
+    yield* streamContent(run);
     const final = await run.final.catch(() => undefined);
     this.lastCompletionStats = fromQvacStats(final?.stats);
   }

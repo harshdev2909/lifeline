@@ -114,6 +114,48 @@ export interface BenchEvent {
   delegated: BenchRow;
 }
 
+export interface RagIngestEvent {
+  type: "rag_ingest";
+  ts: string;
+  workspace: string;
+  doc_count: number;
+  chunk_count: number;
+  embed_model: string;
+  ingest_ms: number;
+}
+export interface RagSearchEvent {
+  type: "rag_search";
+  ts: string;
+  query: string;
+  topK: number;
+  results: Array<{ source: string; section: string; score: number; chars: number }>;
+  search_ms: number;
+}
+export interface SafetyEvent {
+  type: "safety";
+  ts: string;
+  red_flag: boolean;
+  red_flag_terms: string[];
+  grounded: boolean;
+  action: string;
+}
+export interface SttEvent {
+  type: "stt";
+  ts: string;
+  model: string;
+  audio_seconds?: number;
+  transcribe_ms: number;
+  text_chars: number;
+}
+export interface TtsEvent {
+  type: "tts";
+  ts: string;
+  model: string;
+  chars: number;
+  synth_ms: number;
+  out_path: string;
+}
+
 export type EvidenceEvent =
   | SessionEvent
   | ModelLoadEvent
@@ -122,7 +164,12 @@ export type EvidenceEvent =
   | SdkProfileEvent
   | DelegationEvent
   | FallbackEvent
-  | BenchEvent;
+  | BenchEvent
+  | RagIngestEvent
+  | RagSearchEvent
+  | SafetyEvent
+  | SttEvent
+  | TtsEvent;
 
 function defaultEvidenceDir(): string {
   if (process.env.LIFELINE_EVIDENCE_DIR) return process.env.LIFELINE_EVIDENCE_DIR;
@@ -203,6 +250,26 @@ export class RunLogger {
 
   bench(args: Omit<BenchEvent, "type" | "ts">): void {
     this.write({ type: "bench", ts: new Date().toISOString(), ...args });
+  }
+
+  ragIngest(args: Omit<RagIngestEvent, "type" | "ts">): void {
+    this.write({ type: "rag_ingest", ts: new Date().toISOString(), ...args });
+  }
+
+  ragSearch(args: Omit<RagSearchEvent, "type" | "ts">): void {
+    this.write({ type: "rag_search", ts: new Date().toISOString(), ...args });
+  }
+
+  safety(args: Omit<SafetyEvent, "type" | "ts">): void {
+    this.write({ type: "safety", ts: new Date().toISOString(), ...args });
+  }
+
+  stt(args: Omit<SttEvent, "type" | "ts">): void {
+    this.write({ type: "stt", ts: new Date().toISOString(), ...args });
+  }
+
+  tts(args: Omit<TtsEvent, "type" | "ts">): void {
+    this.write({ type: "tts", ts: new Date().toISOString(), ...args });
   }
 
   /** Latest event of a given type, for building the human-readable summary. */
