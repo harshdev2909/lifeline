@@ -21,6 +21,7 @@ import {
   buildGroundedSystemPrompt,
   buildVisionSystemPrompt,
   collectSysInfo,
+  detectInjection,
   createEngine,
   DEFAULT_MODEL,
   EMERGENCY_NOTICE,
@@ -316,6 +317,9 @@ async function runAsk(args: Args): Promise<void> {
         },
       );
       visionFindings = f.trim();
+      const vinj = detectInjection(visionFindings);
+      logger.injectionGuard({ source: "vision", detected: vinj.detected, patterns: vinj.patterns, action: vinj.detected ? "fenced+flagged" : "fenced" });
+      if (!json && vinj.detected) process.stderr.write(`  🛡  injection guard: flagged ${vinj.patterns.join(", ")} in image findings — fenced as data\n`);
       const vDi = vEngine.delegationInfo?.() ?? { served_by: "local" };
       logger.vision({
         model: MODELS.vision.label,
@@ -358,6 +362,14 @@ async function runAsk(args: Args): Promise<void> {
         grounded: safety.grounded,
         action: safety.action,
       });
+      // Injection guard: scan untrusted retrieved text. It's always FENCED in the prompt
+      // (instruction hierarchy); detection adds a flag. We never let it become instructions.
+      const ragText = passages.map((p) => p.content).join("\n");
+      const inj = detectInjection(ragText);
+      logger.injectionGuard({ source: "rag", detected: inj.detected, patterns: inj.patterns, action: inj.detected ? "fenced+flagged" : "fenced" });
+      if (!json && inj.detected) {
+        process.stderr.write(`  🛡  injection guard: flagged ${inj.patterns.join(", ")} in retrieved text — fenced as data, instructions ignored\n`);
+      }
       if (!json) {
         process.stderr.write(`  ✓ retrieved ${passages.length} passage(s); top score ${passages[0]?.score.toFixed(2) ?? "—"}\n`);
         process.stderr.write(`  safety: red_flag=${safety.red_flag} grounded=${safety.grounded} action=${safety.action}\n`);

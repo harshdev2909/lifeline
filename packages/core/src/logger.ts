@@ -155,6 +155,15 @@ export interface GroundingCheckEvent {
   /** Cited tags NOT retrieved this turn — hallucinated/invalid citations. */
   hallucinated_cites: string[];
 }
+export interface InjectionGuardEvent {
+  type: "injection_guard";
+  ts: string;
+  source: "rag" | "ocr" | "vision" | "delegated";
+  detected: boolean;
+  patterns: string[];
+  /** What we did: untrusted text is always fenced; detection adds a flag. */
+  action: string;
+}
 export interface SttEvent {
   type: "stt";
   ts: string;
@@ -225,6 +234,7 @@ export type EvidenceEvent =
   | RagSearchEvent
   | SafetyEvent
   | GroundingCheckEvent
+  | InjectionGuardEvent
   | SttEvent
   | VisionEvent
   | TtsEvent
@@ -325,6 +335,10 @@ export class RunLogger {
 
   groundingCheck(args: Omit<GroundingCheckEvent, "type" | "ts">): void {
     this.write({ type: "grounding_check", ts: new Date().toISOString(), ...args });
+  }
+
+  injectionGuard(args: Omit<InjectionGuardEvent, "type" | "ts">): void {
+    this.write({ type: "injection_guard", ts: new Date().toISOString(), ...args });
   }
 
   stt(args: Omit<SttEvent, "type" | "ts">): void {

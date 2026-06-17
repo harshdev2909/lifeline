@@ -45,6 +45,7 @@ export type {
 export {
   assessSafety,
   detectRedFlags,
+  detectInjection,
   buildGroundedSystemPrompt,
   buildVisionSystemPrompt,
   ungroundedRefusal,
