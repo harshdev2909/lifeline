@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+.env
+.env.*
+
+# Model weight cache — QVAC downloads/caches GGUF/ONNX weights on first run.
+# Never commit weights; they are fetched on demand and cached locally.
+# .qvac-home/ is QVAC's storage root, redirected here off the (full) home disk.
+.qvac/
+.qvac-home/
+models/
+*.gguf
+*.onnx
+
+# Evidence run logs: ignore everything EXCEPT the one committed sample run.
+evidence/*.jsonl
+!evidence/run-sample.jsonl

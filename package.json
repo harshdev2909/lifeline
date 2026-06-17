@@ -1,0 +1,26 @@
+{
+  "name": "lifeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Lifeline — offline-first, peer-to-peer AI mesh of everyday devices (QVAC Hackathon).",
+  "workspaces": [
+    "packages/core",
+    "packages/node-app"
+  ],
+  "engines": {
+    "node": ">=22.17"
+  },
+  "scripts": {
+    "sysinfo": "tsx packages/core/src/sysinfo.ts",
+    "lifeline": "tsx packages/node-app/src/cli.ts",
+    "ask": "tsx packages/node-app/src/cli.ts ask",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,26 @@
+# Lifeline — structured disclosure of every REMOTE API call the project makes.
+#
+# QVAC Hackathon rule: ALL AI inference / embeddings / RAG / STT / TTS / vision
+# run LOCALLY via @qvac/sdk. No cloud AI APIs (no OpenAI/Anthropic/etc.), ever.
+# This file is graded; keep it accurate as the project grows across the 5 days.
+#
+# Schema for each entry under remote_api_calls:
+#   - service:       provider / service name
+#     endpoint:      URL or host contacted
+#     purpose:       why it is called
+#     data_sent:     what leaves the device
+#     triggered_by:  code path that initiates it
+#     day_added:     which build day introduced it
+#     ai_related:    true|false  (AI calls to the cloud are FORBIDDEN — must stay false/empty)
+
+# Day 1: ZERO remote API calls. Inference is fully local via @qvac/sdk.
+remote_api_calls: []
+
+# Full-transparency note (NOT an application API call):
+# On first run only, @qvac/sdk fetches the model weights for the built-in
+# descriptor and caches them on disk. All inference is offline thereafter.
+# Weights are bundled in neither this repo nor the SDK.
+model_weight_downloads:
+  - source: "@qvac/sdk built-in model descriptor (LLAMA_3_2_1B_INST_Q4_0)"
+    when: "first run only; cached on disk afterwards; fully offline once cached"
+    ai_inference: "local-only (on-device); the download moves weights, not prompts/data"

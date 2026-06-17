@@ -1,0 +1,2 @@
+# Evidence run logs land here as run-<ISO timestamp>.jsonl.
+# One sample run (evidence/run-sample.jsonl) is committed; the rest are gitignored.
