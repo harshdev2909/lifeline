@@ -1,0 +1,54 @@
+/**
+ * api.ts — the tiny HTTP client for the local bridge. Same-origin, localhost
+ * only. The WebSocket (see state/bridge.tsx) carries the streaming turns; this
+ * covers settings, the mesh snapshot/probe, uploads, and audio.
+ */
+import type { MeshSnapshot, ServerSettings } from "./protocol";
+
+async function jsonReq<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function getSettings(): Promise<ServerSettings> {
+  return jsonReq<ServerSettings>("/api/settings");
+}
+
+export function putSettings(patch: Partial<ServerSettings>): Promise<ServerSettings> {
+  return jsonReq<ServerSettings>("/api/settings", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export function getMesh(): Promise<MeshSnapshot> {
+  return jsonReq<MeshSnapshot>("/api/mesh");
+}
+
+export function probeMesh(): Promise<MeshSnapshot> {
+  return jsonReq<MeshSnapshot>("/api/mesh/probe", { method: "POST" });
+}
+
+export interface UploadResult {
+  id: string;
+  name: string;
+  kind: "image" | "ocr" | "audio";
+}
+
+/** Upload raw bytes; the bridge writes a temp file and returns an attachment id. */
+export async function uploadFile(kind: UploadResult["kind"], data: Blob, name: string): Promise<UploadResult> {
+  return jsonReq<UploadResult>("/api/upload", {
+    method: "POST",
+    headers: {
+      "content-type": data.type || "application/octet-stream",
+      "x-kind": kind,
+      "x-filename": encodeURIComponent(name),
+    },
+    body: data,
+  });
+}
