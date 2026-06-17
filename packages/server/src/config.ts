@@ -54,7 +54,7 @@ export function resolvePeerRef(ref: string, label?: string, role?: string, model
   const trimmed = ref.trim();
   const isHex = /^[0-9a-f]{64}$/i.test(trimmed);
   const key = isHex ? trimmed.toLowerCase() : topicToProviderKey(trimmed);
-  return { label: label?.trim() || (isHex ? trimmed.slice(0, 8) : trimmed), ref: trimmed, key, role, model };
+  return { label: label?.trim() || (isHex ? key.slice(0, 8) : trimmed), ref: trimmed, key, role, model };
 }
 
 let current: ServerSettings = loadSettings();
