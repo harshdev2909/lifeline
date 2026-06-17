@@ -35,6 +35,7 @@ import type {
   EngineKind,
   InferenceEngine,
   ModelRef,
+  PeerProbe,
   ProgressUpdate,
 } from "./types";
 
@@ -87,6 +88,14 @@ export interface EngineOptions {
   // --- delegation (kind === "delegated") ---
   /** Provider public key (hex) to delegate inference to. Required for delegated engines. */
   providerPublicKey?: string;
+  /**
+   * Mesh routing: ordered candidate peers (preference first). The engine probes each
+   * with a heartbeat and routes to the first that answers, falling back across the list
+   * and finally to local. Single-peer `providerPublicKey` is the one-element case.
+   */
+  providerKeys?: string[];
+  /** Optional hex-key → human label map (e.g. "laptop", "pi"), for evidence/UX only. */
+  peerLabels?: Record<string, string>;
   /** Delegated request timeout (ms). */
   timeout?: number;
   /** Provider liveness/health-check timeout (ms). */
@@ -331,7 +340,10 @@ export class LocalEngine implements InferenceEngine {
 export class DelegatedEngine implements InferenceEngine {
   readonly kind = "delegated" as const;
 
-  private readonly providerPublicKey: string;
+  private providerPublicKey: string;
+  private readonly candidateKeys: string[];
+  private readonly peerLabels: Record<string, string>;
+  private routeProbes: PeerProbe[] = [];
   private readonly timeout?: number;
   private readonly healthCheckTimeout: number;
   private readonly firstEventMs: number;
@@ -353,10 +365,14 @@ export class DelegatedEngine implements InferenceEngine {
   private lastThinkingText = "";
 
   constructor(opts: EngineOptions) {
-    if (!opts.providerPublicKey) {
-      throw new Error("DelegatedEngine requires opts.providerPublicKey (provider's hex public key).");
+    // Accept either a single peer or an ordered candidate list (mesh routing).
+    const keys = (opts.providerKeys && opts.providerKeys.length ? opts.providerKeys : opts.providerPublicKey ? [opts.providerPublicKey] : []).filter(Boolean);
+    if (!keys.length) {
+      throw new Error("DelegatedEngine requires opts.providerPublicKey or opts.providerKeys (provider hex public key[s]).");
     }
-    this.providerPublicKey = opts.providerPublicKey;
+    this.candidateKeys = keys;
+    this.providerPublicKey = keys[0];
+    this.peerLabels = opts.peerLabels ?? {};
     this.timeout = opts.timeout;
     // First DHT holepunch to a fresh peer can take several seconds; be generous
     // so we actually delegate instead of prematurely falling back to local.
@@ -371,18 +387,14 @@ export class DelegatedEngine implements InferenceEngine {
 
   async loadModel({ model }: { model: ModelRef }): Promise<string> {
     this.lastModel = model;
-    // 1) Liveness probe — also establishes/warms the P2P link. Time it as transport setup.
+    // 1) Mesh routing: probe candidate peers (preference order) and route to the first
+    //    that answers. The probe also establishes/warms the P2P link → counts as transport setup.
     const t0 = performance.now();
-    let online = false;
-    try {
-      await heartbeat({ delegate: { providerPublicKey: this.providerPublicKey, timeout: this.healthCheckTimeout } });
-      online = true;
-    } catch (err) {
-      this.fallbackReason = `provider heartbeat failed: ${errMsg(err)}`;
-    }
+    const chosen = await this.selectPeer();
     this.transportSetupMs = performance.now() - t0;
 
-    if (!online) return this.fallbackLoad(model);
+    if (!chosen) return this.fallbackLoad(model);
+    this.providerPublicKey = chosen;
 
     // 2) Delegated load — the provider loads/serves the model.
     try {
@@ -406,6 +418,30 @@ export class DelegatedEngine implements InferenceEngine {
       this.fallbackReason = `delegated loadModel failed: ${errMsg(err)}`;
       return this.fallbackLoad(model);
     }
+  }
+
+  /**
+   * Heartbeat-probe each candidate peer in preference order; return the first that
+   * answers. Records every probe (latency + ok/err) for the routing evidence. Returns
+   * undefined if no peer is live (→ local fallback).
+   */
+  private async selectPeer(): Promise<string | undefined> {
+    this.routeProbes = [];
+    for (const key of this.candidateKeys) {
+      const p0 = performance.now();
+      try {
+        await heartbeat({ delegate: { providerPublicKey: key, timeout: this.healthCheckTimeout } });
+        this.routeProbes.push({ peer_key: key, label: this.peerLabels[key], ok: true, probe_ms: Math.round(performance.now() - p0) });
+        return key; // first live peer wins
+      } catch (err) {
+        this.routeProbes.push({ peer_key: key, label: this.peerLabels[key], ok: false, probe_ms: Math.round(performance.now() - p0), error: errMsg(err) });
+      }
+    }
+    this.fallbackReason =
+      this.candidateKeys.length > 1
+        ? `no live peer among ${this.candidateKeys.length} candidates`
+        : `provider heartbeat failed: ${this.routeProbes[0]?.error ?? "unreachable"}`;
+    return undefined;
   }
 
   private async fallbackLoad(model: ModelRef): Promise<string> {
@@ -550,6 +586,9 @@ export class DelegatedEngine implements InferenceEngine {
       peer_key: this.providerPublicKey,
       transport_setup_ms: this.transportSetupMs,
       ...(this.fallbackReason ? { fallback_reason: this.fallbackReason } : {}),
+      ...(this.routeProbes.length
+        ? { route: { candidates: this.routeProbes, chosen: this.servedBy === "remote" ? this.providerPublicKey : undefined } }
+        : {}),
     };
   }
 

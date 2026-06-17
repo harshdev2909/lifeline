@@ -111,6 +111,15 @@ export interface FallbackEvent {
   topic?: string;
   peer_key?: string;
 }
+/** Mesh-aware routing: which candidate peers were probed and which one won (or local). */
+export interface RoutingEvent {
+  type: "routing";
+  ts: string;
+  topic?: string;
+  candidates: Array<{ peer_key: string; label?: string; ok: boolean; probe_ms: number; error?: string }>;
+  chosen?: string;
+  served_by: "remote" | "local";
+}
 export interface BenchEvent {
   type: "bench";
   ts: string;
@@ -247,6 +256,7 @@ export type EvidenceEvent =
   | SdkProfileEvent
   | DelegationEvent
   | FallbackEvent
+  | RoutingEvent
   | BenchEvent
   | RagIngestEvent
   | RagSearchEvent
@@ -334,6 +344,10 @@ export class RunLogger {
 
   fallback(args: Omit<FallbackEvent, "type" | "ts" | "from" | "served_by">): void {
     this.write({ type: "fallback", ts: new Date().toISOString(), from: "remote", served_by: "local", ...args });
+  }
+
+  routing(args: Omit<RoutingEvent, "type" | "ts">): void {
+    this.write({ type: "routing", ts: new Date().toISOString(), ...args });
   }
 
   bench(args: Omit<BenchEvent, "type" | "ts">): void {

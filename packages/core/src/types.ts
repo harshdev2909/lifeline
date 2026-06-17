@@ -90,6 +90,15 @@ export interface CompletionTiming {
  * Where the most recent operation was actually served, plus P2P transport detail.
  * Engine-neutral so the CLI can log delegation evidence without knowing the engine type.
  */
+/** One peer's liveness-probe result during mesh routing. */
+export interface PeerProbe {
+  peer_key: string;
+  label?: string;
+  ok: boolean;
+  probe_ms: number;
+  error?: string;
+}
+
 export interface DelegationInfo {
   served_by: "local" | "remote";
   /** Provider public key (hex) when served remotely. */
@@ -98,6 +107,8 @@ export interface DelegationInfo {
   transport_setup_ms?: number;
   /** Set when a delegated request fell back to local. */
   fallback_reason?: string;
+  /** Mesh routing: candidate peers probed (in preference order) and which one won. */
+  route?: { candidates: PeerProbe[]; chosen?: string };
 }
 
 /**

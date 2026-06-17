@@ -7,6 +7,7 @@ export type {
   InferenceEngine,
   ModelRef,
   ModelSrc,
+  PeerProbe,
   ProgressUpdate,
   Role,
 } from "./types";
@@ -71,6 +72,7 @@ export type {
   MeasuredInference,
   ModelLoadEvent,
   ModelUnloadEvent,
+  RoutingEvent,
   SdkProfileEvent,
   SessionEvent,
 } from "./logger";

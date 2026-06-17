@@ -13,7 +13,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -46,6 +46,7 @@ import type {
   ChatMsg,
   CompletionStats,
   DelegationInfo,
+  EngineOptions,
   InferenceEngine,
   MeasuredInference,
   ModelRef,
@@ -128,6 +129,8 @@ ask options:
   --delegate                 Offload completion to a provider (falls back to local if unreachable)
   --topic <t>                Rendezvous topic (derives the provider's key on both sides)
   --provider-key <hex>       Target a specific provider public key (overrides --topic)
+  --peers <list>             Mesh routing: ordered [label@]topic-or-key list; route to first live
+                             peer, fall back across them, then local (e.g. laptop@t1,pi@t2)
   --system "<text>" | --no-stream | --max-tokens <n>
   --timeout <ms> | --health-timeout <ms> | --json | --evidence-dir <dir>
   Medical grounding adds a safety layer: red-flag emergency notice, source citations,
@@ -139,6 +142,8 @@ serve options:
   --allow <key[,key...]>     Private mesh: only accept these peer public keys (firewall)
   --model <key>              Model to pre-load/warm (default: llama1b)
   --no-warm                  Don't pre-load the model (load lazily on first request)
+  --home <dir>               Own QVAC corestore dir — run a 2nd/3rd peer on one machine
+  --label <name>             Display label for this peer (e.g. "pi"), shown in the banner
 
 bench options:
   --topic <t> | --provider-key <hex>  (required)   --model <key>   --max-tokens <n>   --json
@@ -158,6 +163,27 @@ function resolveProviderKey(flags: Args["flags"]): { key: string; topic?: string
   const topic = fstr(flags, "topic");
   if (topic) return { key: topicToProviderKey(topic), topic };
   throw new Error("delegation needs --topic <t> or --provider-key <hex>");
+}
+
+/**
+ * Parse `--peers` (mesh routing): a comma-separated, preference-ordered list of peers.
+ * Each entry is `[label@]ref` where ref is either a 64-hex provider key or a topic name
+ * (derived to a key). Returns ordered keys + a key→label map for the routing evidence.
+ */
+function parsePeers(spec: string): { keys: string[]; labels: Record<string, string> } {
+  const keys: string[] = [];
+  const labels: Record<string, string> = {};
+  for (const raw of spec.split(",").map((s) => s.trim()).filter(Boolean)) {
+    const at = raw.indexOf("@");
+    const label = at >= 0 ? raw.slice(0, at) : undefined;
+    const ref = at >= 0 ? raw.slice(at + 1) : raw;
+    const isHex = /^[0-9a-f]{64}$/i.test(ref);
+    const key = isHex ? ref.toLowerCase() : topicToProviderKey(ref);
+    keys.push(key);
+    labels[key] = label ?? (isHex ? ref.slice(0, 8) : ref);
+  }
+  if (!keys.length) throw new Error("--peers needs at least one [label@]topic-or-key");
+  return { keys, labels };
 }
 
 function makeProgressReporter(quiet: boolean): (p: { phase?: string; progress?: number }) => void {
@@ -256,34 +282,49 @@ async function runAsk(args: Args): Promise<void> {
 
   let providerKey: string | undefined;
   let topic: string | undefined;
+  let peerKeys: string[] | undefined;
+  let peerLabels: Record<string, string> | undefined;
+  const peersSpec = fstr(flags, "peers");
   if (delegate) {
-    const r = resolveProviderKey(flags);
-    providerKey = r.key;
-    topic = r.topic;
+    if (peersSpec) {
+      const m = parsePeers(peersSpec);
+      peerKeys = m.keys;
+      peerLabels = m.labels;
+      providerKey = m.keys[0]; // preferred peer, for display/single-peer logging
+    } else {
+      const r = resolveProviderKey(flags);
+      providerKey = r.key;
+      topic = r.topic;
+    }
   }
+
+  // Shared delegated-engine options so vision + completion route over the same mesh.
+  const delegatedOpts = (): EngineOptions => ({
+    kind: "delegated",
+    ...(peerKeys ? { providerKeys: peerKeys, peerLabels } : { providerPublicKey: providerKey }),
+    timeout: fnum(flags, "timeout"),
+    healthCheckTimeout: fnum(flags, "health-timeout"),
+    streamStallMs: fnum(flags, "stall-ms"),
+    firstEventMs: fnum(flags, "first-event-ms"),
+    simulateStall: fbool(flags, "simulate-stall"),
+    onProgress: makeProgressReporter(json),
+  });
 
   const sysinfo = collectSysInfo();
   const logger = new RunLogger({ dir: fstr(flags, "evidence-dir") });
   const engine: InferenceEngine = createEngine(
-    delegate
-      ? {
-          kind: "delegated",
-          providerPublicKey: providerKey,
-          timeout: fnum(flags, "timeout"),
-          healthCheckTimeout: fnum(flags, "health-timeout"),
-          streamStallMs: fnum(flags, "stall-ms"),
-          firstEventMs: fnum(flags, "first-event-ms"),
-          simulateStall: fbool(flags, "simulate-stall"),
-          onProgress: makeProgressReporter(json),
-        }
-      : { kind: "local", onProgress: makeProgressReporter(json) },
+    delegate ? delegatedOpts() : { kind: "local", onProgress: makeProgressReporter(json) },
   );
   logger.session(engine.kind, sysinfo);
 
   if (!json) {
     process.stderr.write(`\nLifeline · ${engine.kind} engine${delegate ? ` · topic "${topic ?? "—"}"` : ""} · no cloud\n`);
     process.stderr.write(formatSysInfoTable(sysinfo) + "\n");
-    if (delegate) process.stderr.write(`  Provider key: ${providerKey}\n`);
+    if (delegate && peerKeys) {
+      process.stderr.write(`  Mesh peers (preference order): ${peerKeys.map((k) => `${peerLabels?.[k] ?? k.slice(0, 8)}(${k.slice(0, 8)}…)`).join(" → ")} → local\n`);
+    } else if (delegate) {
+      process.stderr.write(`  Provider key: ${providerKey}\n`);
+    }
   }
 
   const lang = fstr(flags, "lang"); // non-English round-trip (e.g. es, fr)
@@ -314,9 +355,7 @@ async function runAsk(args: Args): Promise<void> {
     if (!prompt.trim()) prompt = "Based on what is shown, what first aid should I give?";
     if (!json) process.stderr.write(`👁  Vision: describing ${imagePath} (${delegate ? "DELEGATED to peer" : "LOCAL"}) …\n`);
     const vEngine: InferenceEngine = createEngine(
-      delegate
-        ? { kind: "delegated", providerPublicKey: providerKey, healthCheckTimeout: fnum(flags, "health-timeout"), onProgress: makeProgressReporter(json) }
-        : { kind: "local", onProgress: makeProgressReporter(json) },
+      delegate ? delegatedOpts() : { kind: "local", onProgress: makeProgressReporter(json) },
     );
     try {
       const vId = await vEngine.loadModel({ model: MODELS.vision });
@@ -492,6 +531,11 @@ async function runAsk(args: Args): Promise<void> {
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
     logger.inference({ modelId, prompt_chars: prompt.length, prompt_tokens: sdk?.prompt_tokens, measured, sdk_reported: sdk });
 
+    // Mesh routing evidence: which candidate peers were probed and which won (or local).
+    if (delegate && di.route) {
+      logger.routing({ topic, candidates: di.route.candidates, chosen: di.route.chosen, served_by: di.served_by });
+    }
+
     if (di.served_by === "remote") {
       logger.delegation({
         topic,
@@ -624,6 +668,13 @@ function printAskSummary(a: {
 // ============================ serve ============================
 async function runServe(args: Args): Promise<void> {
   const { flags } = args;
+  // --home lets a 2nd/3rd provider on the SAME machine use its own QVAC corestore
+  // (so an emulated extra mesh peer doesn't collide on the default provider home).
+  const homeDir = fstr(flags, "home");
+  if (homeDir && !process.env.SNAP_USER_COMMON) {
+    process.env.SNAP_USER_COMMON = isAbsolute(homeDir) ? homeDir : join(REPO_ROOT, homeDir);
+  }
+  const label = fstr(flags, "label");
   setupQvacEnv("provider");
 
   const topic = fstr(flags, "topic");
@@ -650,6 +701,8 @@ async function runServe(args: Args): Promise<void> {
 
   const provider = new Provider({ onProgress: makeProgressReporter(false) });
   process.stderr.write(`\nLifeline provider · 100% on-device · serving over Holepunch P2P\n`);
+  if (label) process.stderr.write(`  peer label: ${label}\n`);
+  if (homeDir) process.stderr.write(`  home: ${process.env.SNAP_USER_COMMON}\n`);
   if (topic) process.stderr.write(`  topic: "${topic}"\n`);
   if (firewall) process.stderr.write(`  🔒 firewall: allow ${firewall.publicKeys.length} peer(s) only\n`);
 
