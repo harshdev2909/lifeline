@@ -506,7 +506,7 @@ async function runAsk(args: Args): Promise<void> {
     // Provisional, post-LOAD view (may flip to local if the stream stalls mid-completion).
     let di: DelegationInfo = engine.delegationInfo?.() ?? { served_by: "local" };
     if (!json) {
-      const servedNote = di.served_by === "remote" ? "remote peer" : delegate ? "local (FALLBACK)" : "local";
+      const servedNote = di.served_by === "remote" ? "remote peer" : delegate ? "local (fallback)" : "local";
       process.stderr.write(`  ✓ loaded in ${loadMs.toFixed(0)} ms · served_by: ${servedNote}\n\n💬 ${prompt}\n\n`);
       if (safety.red_flag) process.stdout.write(`${EMERGENCY_NOTICE}\n\n`);
     }
@@ -662,7 +662,7 @@ function printAskSummary(a: {
   evidencePath: string;
 }): void {
   const { measured, sdk, di } = a;
-  const served = di.served_by === "remote" ? "remote peer" : a.delegate ? "local (FALLBACK)" : "local";
+  const served = di.served_by === "remote" ? "remote peer" : a.delegate ? "local (fallback)" : "local";
   const rows: Array<[string, string, string]> = [
     ["Metric", "measured (us)", "SDK-reported"],
     ["model load (ms)", num(a.loadMs, 0), "—"],
