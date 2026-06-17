@@ -8,10 +8,10 @@
   "author": "Harsh Sharma <harsh.dev2909@gmail.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/harshsharma/lifeline.git"
+    "url": "git+https://github.com/harshdev2909/lifeline.git"
   },
-  "homepage": "https://github.com/harshsharma/lifeline#readme",
-  "bugs": "https://github.com/harshsharma/lifeline/issues",
+  "homepage": "https://github.com/harshdev2909/lifeline#readme",
+  "bugs": "https://github.com/harshdev2909/lifeline/issues",
   "keywords": [
     "offline-first",
     "on-device",
