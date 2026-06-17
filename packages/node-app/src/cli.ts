@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   assessSafety,
   buildGroundedSystemPrompt,
+  buildVisionSystemPrompt,
   collectSysInfo,
   createEngine,
   DEFAULT_MODEL,
@@ -232,7 +233,10 @@ async function runAsk(args: Args): Promise<void> {
 
   let prompt = args.positionals.join(" ");
   const audioPath = fstr(flags, "audio");
-  if (!prompt.trim() && !audioPath) throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav>)');
+  const imagePath = fstr(flags, "image");
+  if (!prompt.trim() && !audioPath && !imagePath) {
+    throw new Error('missing prompt, e.g. lifeline ask "Explain heat stroke first aid" (or --audio <wav> / --image <img>)');
+  }
 
   const model = resolveModel(flags);
   const stream = !fbool(flags, "no-stream");
@@ -285,6 +289,49 @@ async function runAsk(args: Args): Promise<void> {
     if (!prompt.trim()) throw new Error("transcription produced no text");
   }
 
+  // ---- Vision (multimodal describe → findings), if --image. Two-stage: vision describes,
+  //      MedPsy + the manual decide. Honors --delegate (heavy model runs on the peer). ----
+  let visionFindings: string | undefined;
+  if (imagePath) {
+    if (!prompt.trim()) prompt = "Based on what is shown, what first aid should I give?";
+    if (!json) process.stderr.write(`👁  Vision: describing ${imagePath} (${delegate ? "DELEGATED to peer" : "LOCAL"}) …\n`);
+    const vEngine: InferenceEngine = createEngine(
+      delegate
+        ? { kind: "delegated", providerPublicKey: providerKey, healthCheckTimeout: fnum(flags, "health-timeout"), onProgress: makeProgressReporter(json) }
+        : { kind: "local", onProgress: makeProgressReporter(json) },
+    );
+    try {
+      const vId = await vEngine.loadModel({ model: MODELS.vision });
+      let f = "";
+      const vm = await runCompletion(
+        vEngine,
+        vId,
+        [
+          { role: "system", content: buildVisionSystemPrompt() },
+          { role: "user", content: "Describe the observable medical findings in this image.", attachments: [{ path: imagePath }] },
+        ],
+        true,
+        (s) => {
+          f += s;
+        },
+      );
+      visionFindings = f.trim();
+      const vDi = vEngine.delegationInfo?.() ?? { served_by: "local" };
+      logger.vision({
+        model: MODELS.vision.label,
+        image: imagePath,
+        findings_chars: visionFindings.length,
+        ttfc_ms: vm.ttft_content_ms ?? Math.round(vm.ttft_ms),
+        total_ms: Math.round(vm.total_ms),
+        served_by: vDi.served_by,
+      });
+      await vEngine.unload(vId);
+      if (!json) process.stderr.write(`  ✓ findings (served_by ${vDi.served_by}): ${visionFindings.slice(0, 160)}${visionFindings.length > 160 ? "…" : ""}\n`);
+    } finally {
+      await vEngine.dispose?.();
+    }
+  }
+
   // ---- RAG retrieval (LOCAL) + safety, if --rag ----
   let kb: KnowledgeBase | undefined;
   let passages: RetrievedPassage[] = [];
@@ -300,8 +347,11 @@ async function runAsk(args: Args): Promise<void> {
       const r = await kb.retrieve(prompt, topK);
       passages = r.passages;
       logger.ragSearch(r.stats);
-      const grounded = passages.length > 0 && passages[0].score >= GROUNDING_MIN_SCORE;
-      safety = assessSafety({ query: prompt, grounded });
+      // With an image, the [IMG] findings are themselves grounding context, so we answer
+      // (citing [IMG] + whatever manual passages retrieved) rather than hard-refusing.
+      const grounded = (passages.length > 0 && passages[0].score >= GROUNDING_MIN_SCORE) || Boolean(visionFindings);
+      // Run red-flag detection over the question AND the image findings.
+      safety = assessSafety({ query: `${prompt} ${visionFindings ?? ""}`, grounded });
       logger.safety({
         red_flag: safety.red_flag,
         red_flag_terms: safety.red_flag_terms,
@@ -328,12 +378,17 @@ async function runAsk(args: Args): Promise<void> {
       return;
     }
 
-    // Build messages: grounded (RAG) or plain.
+    // Build messages: grounded (RAG passages [S#] + optional image findings [IMG]) or plain.
     const tagged = passages.map((p, i) => ({ tag: `S${i + 1}`, p }));
-    const messages: ChatMsg[] =
-      ragPath && tagged.length
-        ? [{ role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) }, { role: "user", content: prompt }]
-        : buildMessages(prompt, system);
+    if (visionFindings) {
+      tagged.unshift({
+        tag: "IMG",
+        p: { id: "image", source: "image", section: "vision findings", content: visionFindings, score: 1, snippet: visionFindings.slice(0, 120) },
+      });
+    }
+    const messages: ChatMsg[] = tagged.length
+      ? [{ role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) }, { role: "user", content: prompt }]
+      : buildMessages(prompt, system);
 
     if (!json) process.stderr.write(`  Loading model: ${model.label} …\n`);
     const tLoad0 = performance.now();

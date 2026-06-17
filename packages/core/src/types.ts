@@ -8,9 +8,16 @@
 
 export type Role = "system" | "user" | "assistant";
 
+/** An image (or other media) attached to a chat turn for multimodal models. */
+export interface Attachment {
+  path: string;
+}
+
 export interface ChatMsg {
   role: Role;
   content: string;
+  /** Image attachments for multimodal turns (QVAC `history[].attachments`). */
+  attachments?: Attachment[];
 }
 
 /**
@@ -31,6 +38,8 @@ export interface ModelRef {
   type: string;
   /** Optional backend `modelConfig` (ctx_size, temp, predict, ...). */
   config?: Record<string, unknown>;
+  /** Multimodal projection model (QVAC `modelConfig.projectionModelSrc`) for vision models. */
+  projection?: ModelSrc;
   /**
    * True for chain-of-thought models (e.g. MedPsy). Their live token stream
    * includes `<think>` reasoning; the engine instead emits the SDK's clean,

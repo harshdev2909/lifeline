@@ -163,6 +163,16 @@ export interface SttEvent {
   transcribe_ms: number;
   text_chars: number;
 }
+export interface VisionEvent {
+  type: "vision";
+  ts: string;
+  model: string;
+  image: string;
+  findings_chars: number;
+  ttfc_ms?: number;
+  total_ms: number;
+  served_by: string;
+}
 export interface TtsEvent {
   type: "tts";
   ts: string;
@@ -216,6 +226,7 @@ export type EvidenceEvent =
   | SafetyEvent
   | GroundingCheckEvent
   | SttEvent
+  | VisionEvent
   | TtsEvent
   | MedbenchEvent;
 
@@ -318,6 +329,10 @@ export class RunLogger {
 
   stt(args: Omit<SttEvent, "type" | "ts">): void {
     this.write({ type: "stt", ts: new Date().toISOString(), ...args });
+  }
+
+  vision(args: Omit<VisionEvent, "type" | "ts">): void {
+    this.write({ type: "vision", ts: new Date().toISOString(), ...args });
   }
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {

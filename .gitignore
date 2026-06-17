@@ -34,6 +34,7 @@ evidence/*.jsonl
 !evidence/run-sample-voice.jsonl
 !evidence/run-sample-stall-fallback.jsonl
 !evidence/run-sample-voiceout.jsonl
+!evidence/run-sample-vision.jsonl
 
 # medbench markdown tables (keep one sample)
 evidence/medbench-*.md
@@ -41,3 +42,6 @@ evidence/medbench-*.md
 
 # generated audio (regenerable; do not commit binaries)
 evidence/*.wav
+
+# test image binaries are tiny + synthetic — keep them
+!corpus/test-images/*.bmp

@@ -65,6 +65,18 @@ export function ungroundedRefusal(): string {
   );
 }
 
+/** System prompt for the VISION stage: describe observable findings only — never advise. */
+export function buildVisionSystemPrompt(): string {
+  return [
+    "You are a careful medical-imaging describer inside an offline first-aid tool.",
+    "Describe ONLY what is objectively visible in the image: body part, visible injuries or",
+    "abnormalities (bleeding, swelling, burns, rashes, deformity), colour, and approximate extent.",
+    "If it is a label or document, transcribe the visible text. Be factual and concise.",
+    "Do NOT give advice, diagnosis, or treatment — another system does that. If the image is",
+    "unclear, not medical, or you cannot tell, say so plainly.",
+  ].join("\n");
+}
+
 /** System prompt that constrains the model to the retrieved passages and demands citations. */
 export function buildGroundedSystemPrompt(passages: Array<{ tag: string; content: string }>): string {
   const ctx = passages.map((p) => `[${p.tag}]\n${p.content}`).join("\n\n");

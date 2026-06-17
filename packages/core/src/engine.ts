@@ -22,6 +22,8 @@ import {
   profiler,
   LLAMA_3_2_1B_INST_Q4_0,
   MEDGEMMA_4B_IT_Q4_1,
+  SMOLVLM2_500M_MULTIMODAL_Q8_0,
+  MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
 } from "@qvac/sdk";
 import type { CompletionStats as QvacStats, LoadModelOptions, ModelProgressUpdate } from "@qvac/sdk";
 
@@ -41,7 +43,7 @@ export const MODELS = {
   /** Small, fast default — ~773 MB, downloaded+cached on first run, offline after. */
   llama1b: { label: "Llama 3.2 1B Instruct (Q4_0)", src: LLAMA_3_2_1B_INST_Q4_0, type: "llamacpp-completion" },
   /** MedGemma — medical model from the QVAC registry (baseline for the medical vertical). */
-  medgemma4b: { label: "MedGemma 4B IT (Q4_1) — medical", src: MEDGEMMA_4B_IT_Q4_1, type: "llamacpp-completion" },
+  medgemma4b: { label: "MedGemma 4B IT (Q4_1) — medical", src: MEDGEMMA_4B_IT_Q4_1, type: "llamacpp-completion", config: { ctx_size: 8192 } },
   /** MedPsy-4B — the medical hero model. Not in the QVAC registry; loaded from HF (GGUF URL).
    *  A chain-of-thought model: we surface the SDK's clean thinking-stripped answer (see
    *  `reasoning`), with a generous `predict` so reasoning + answer both fit. */
@@ -50,7 +52,15 @@ export const MODELS = {
     src: "https://huggingface.co/qvac/MedPsy-4B-GGUF/resolve/main/medpsy-4b-q4_k_m-imat.gguf",
     type: "llamacpp-completion",
     reasoning: true,
-    config: { predict: 768 },
+    config: { predict: 768, ctx_size: 8192 },
+  },
+  /** SmolVLM2-500M multimodal — describes images (vision). Light enough to delegate to a peer. */
+  vision: {
+    label: "SmolVLM2-500M (multimodal)",
+    src: SMOLVLM2_500M_MULTIMODAL_Q8_0,
+    type: "llamacpp-completion",
+    projection: MMPROJ_SMOLVLM2_500M_MULTIMODAL_Q8_0,
+    config: { ctx_size: 1024 },
   },
 } satisfies Record<string, ModelRef>;
 
@@ -113,10 +123,21 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Build the QVAC `modelConfig`, folding in a multimodal projection model if present. */
+function modelConfigFor(model: ModelRef): Record<string, unknown> | undefined {
+  const cfg: Record<string, unknown> = { ...(model.config ?? {}) };
+  if (model.projection) cfg.projectionModelSrc = model.projection;
+  return Object.keys(cfg).length ? cfg : undefined;
+}
+
 /** Start a QVAC completion. Shared by Local and Delegated engines (same call shape; the
  *  `delegate` is attached at loadModel time, so completion() is identical for both). */
 function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) {
-  const history = messages.map((m) => ({ role: m.role, content: m.content }));
+  const history = messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    ...(m.attachments && m.attachments.length ? { attachments: m.attachments } : {}),
+  }));
   // captureThinking routes any reasoning to thinkingDelta events so `contentDelta`
   // (what we stream) stays clean even on reasoning models.
   return completion({ modelId, history, stream, captureThinking: true } as Parameters<typeof completion>[0]);
@@ -201,7 +222,7 @@ export class LocalEngine implements InferenceEngine {
     const opts = {
       modelSrc: model.src,
       modelType: model.type,
-      ...(model.config ? { modelConfig: model.config } : {}),
+      ...(modelConfigFor(model) ? { modelConfig: modelConfigFor(model) } : {}),
       onProgress: (p: ModelProgressUpdate) => this.progressCb?.(p),
     } as unknown as LoadModelOptions;
 
@@ -368,7 +389,7 @@ export class DelegatedEngine implements InferenceEngine {
       const opts = {
         modelSrc: model.src,
         modelType: model.type,
-        ...(model.config ? { modelConfig: model.config } : {}),
+        ...(modelConfigFor(model) ? { modelConfig: modelConfigFor(model) } : {}),
         delegate: {
           providerPublicKey: this.providerPublicKey,
           ...(this.timeout ? { timeout: this.timeout } : {}),

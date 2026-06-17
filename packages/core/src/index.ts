@@ -46,6 +46,7 @@ export {
   assessSafety,
   detectRedFlags,
   buildGroundedSystemPrompt,
+  buildVisionSystemPrompt,
   ungroundedRefusal,
   MEDICAL_DISCLAIMER,
   EMERGENCY_NOTICE,
