@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Lifeline — offline-first, peer-to-peer AI mesh of everyday devices (QVAC Hackathon).",
+  "description": "Lifeline — offline-first, peer-to-peer AI mesh of everyday devices.",
   "workspaces": [
     "packages/core",
     "packages/node-app"
@@ -16,6 +16,9 @@
     "sysinfo": "tsx packages/core/src/sysinfo.ts",
     "lifeline": "tsx packages/node-app/src/cli.ts",
     "ask": "tsx packages/node-app/src/cli.ts ask",
+    "serve": "tsx packages/node-app/src/cli.ts serve",
+    "bench": "tsx packages/node-app/src/cli.ts bench",
+    "prefetch:embeddings": "node scripts/prefetch-embeddings.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
