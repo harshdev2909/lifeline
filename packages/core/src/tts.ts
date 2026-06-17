@@ -63,6 +63,11 @@ function samplesToBuffer(samples: number[]): Buffer {
   return b;
 }
 
+/** Wrap Int16 PCM samples in a complete 16-bit mono WAV buffer (header + data). */
+export function wavBuffer(samples: number[], sampleRate = SAMPLE_RATE): Buffer {
+  return Buffer.concat([wavHeader(samples.length * 2, sampleRate), samplesToBuffer(samples)]);
+}
+
 /** Synthesize `text` to a WAV file at `outPath`. Loads + unloads the TTS model (KV flush). */
 export async function synthesizeToWav(text: string, outPath: string, opts: TtsOptions = {}): Promise<TtsResult> {
   const loadOpts = {
@@ -83,7 +88,7 @@ export async function synthesizeToWav(text: string, outPath: string, opts: TtsOp
     const result = textToSpeech({ modelId, text, inputType: "text", stream: false } as unknown as Parameters<typeof textToSpeech>[0]);
     const samples = (await result.buffer) as number[];
     const synth_ms = Math.round(performance.now() - t0);
-    writeFileSync(outPath, Buffer.concat([wavHeader(samples.length * 2, SAMPLE_RATE), samplesToBuffer(samples)]));
+    writeFileSync(outPath, wavBuffer(samples, SAMPLE_RATE));
     return {
       out_path: outPath,
       model: opts.modelLabel ?? "Supertonic EN (Q8_0)",

@@ -22,6 +22,7 @@ import {
   buildVisionSystemPrompt,
   collectSysInfo,
   detectInjection,
+  extractCitations,
   createEngine,
   EMERGENCY_NOTICE,
   formatSysInfoTable,
@@ -568,15 +569,7 @@ async function runAsk(args: Args): Promise<void> {
     let attachedCite: string | undefined;
     if (tagged.length) {
       const retrievedTags = tagged.map((t) => t.tag);
-      citedTags = [...new Set(Array.from(answer.matchAll(/\[(S\d+|IMG|OCR)\]/g), (m) => m[1]))];
-      // Safety net: a grounded answer should always point at a source. If the model
-      // answered without citing inline, attribute it to the top retrieved passage so the
-      // chain stays auditable.
-      if (citedTags.length === 0 && answer.trim()) {
-        attachedCite = retrievedTags[0];
-        citedTags = [attachedCite];
-      }
-      hallucinated = citedTags.filter((c) => !retrievedTags.includes(c));
+      ({ cited: citedTags, attached: attachedCite, hallucinated } = extractCitations(answer, retrievedTags));
       logger.groundingCheck({ cited: citedTags, retrieved: retrievedTags, hallucinated_cites: hallucinated });
     }
 

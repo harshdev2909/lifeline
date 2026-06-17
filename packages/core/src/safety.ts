@@ -65,6 +65,26 @@ export function ungroundedRefusal(): string {
   );
 }
 
+/**
+ * Reconcile the citations an answer emits against the passages actually retrieved.
+ * Recognises [S#], [IMG], and [OCR] tags. If a non-empty answer cited nothing, the
+ * top retrieved passage is attached so a grounded answer always points at a source.
+ * Returns any cited tags that were NOT retrieved (hallucinated citations).
+ */
+export function extractCitations(
+  answer: string,
+  retrievedTags: string[],
+): { cited: string[]; attached?: string; hallucinated: string[] } {
+  let cited = [...new Set(Array.from(answer.matchAll(/\[(S\d+|IMG|OCR)\]/g), (m) => m[1]))];
+  let attached: string | undefined;
+  if (cited.length === 0 && answer.trim() && retrievedTags.length) {
+    attached = retrievedTags[0];
+    cited = [attached];
+  }
+  const hallucinated = cited.filter((c) => !retrievedTags.includes(c));
+  return { cited, attached, hallucinated };
+}
+
 /** System prompt for the VISION stage: describe observable findings only — never advise. */
 export function buildVisionSystemPrompt(): string {
   return [
