@@ -126,6 +126,7 @@ ask options:
 serve options:
   --topic <t>                Rendezvous topic → deterministic provider identity (recommended)
   --seed <hex>               Raw 32-byte hex seed for the provider identity (advanced)
+  --allow <key[,key...]>     Private mesh: only accept these peer public keys (firewall)
   --model <key>              Model to pre-load/warm (default: llama1b)
   --no-warm                  Don't pre-load the model (load lazily on first request)
 
@@ -503,12 +504,25 @@ async function runServe(args: Args): Promise<void> {
   const model = resolveModel(flags);
   const warm = !fbool(flags, "no-warm");
 
+  // Private mesh: --allow <pubkey[,pubkey]> → only these peers may connect.
+  const allowList = (fstr(flags, "allow") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const firewall = allowList.length ? { mode: "allow" as const, publicKeys: allowList } : undefined;
+
+  const sysinfo = collectSysInfo();
+  const logger = new RunLogger({ dir: fstr(flags, "evidence-dir") });
+  // Record the firewall config in the session event (auditable).
+  logger.session(`provider${firewall ? " (allowlist)" : ""}`, sysinfo);
+
   const provider = new Provider({ onProgress: makeProgressReporter(false) });
   process.stderr.write(`\nLifeline provider · 100% on-device · serving over Holepunch P2P\n`);
   if (topic) process.stderr.write(`  topic: "${topic}"\n`);
+  if (firewall) process.stderr.write(`  🔒 firewall: allow ${firewall.publicKeys.length} peer(s) only\n`);
 
   try {
-    const { publicKey } = await provider.start();
+    const { publicKey } = await provider.start({ firewall });
     process.stderr.write(`  ✓ provider public key: ${publicKey}\n`);
     if (expectedKey && expectedKey !== publicKey) {
       process.stderr.write(`  ⚠ derived key ${expectedKey} != advertised key (topic derivation mismatch)\n`);

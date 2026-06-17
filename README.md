@@ -21,9 +21,39 @@ Built for **Tether's QVAC Hackathon I — “Unleash Edge AI.”**
 | 4 | Multimodal (vision/OCR), the Raspberry Pi node, prompt-injection hardening of the delegated path. |
 | 5 | 5-min demo video, reproducibility, evidence bundle, submission. |
 
-> Days 1–2 done. The CLI talks only to `core`'s `InferenceEngine`; `createEngine()` returns a
+> Days 1–3 done. The CLI talks only to `core`'s `InferenceEngine`; `createEngine()` returns a
 > `LocalEngine` or a `DelegatedEngine` (P2P) with no caller changes — see
 > [Engine abstraction](#engine-abstraction) and [P2P delegated inference](#p2p-delegated-inference-day-2).
+
+### Architecture
+```
+            ┌─────────────────────────── consumer device (laptop / phone) ───────────────────────────┐
+   voice ──▶│  --audio (Whisper STT, local)                                                           │
+            │        │                                                                                 │
+   text  ──▶│     question ─▶ KnowledgeBase (RAG, LOCAL): embed → ragSearch ─▶ top-K passages + cites  │
+            │                          │                                                               │
+            │                   safety layer: red-flag? grounded? (disclaimer always)                  │
+            │                          │                                                               │
+            │              grounded ChatMsg[] ─▶ InferenceEngine.complete()                            │
+            │                                         │                                                │
+            │                       ┌─────────────────┴───────────────────┐                           │
+            │                  LocalEngine (Metal GPU)            DelegatedEngine ──── Holepunch P2P ──▶│ provider device
+            │                                                     (heartbeat + watchdog;       (lifeline serve:
+            │                                                      stall/down → fall back local) MedPsy on its GPU)
+            └────────────────────────────────────────────────────────────────────────────────────────┘
+   Every step → auditable JSONL evidence.   No cloud AI.   DHT used only for peer discovery.
+```
+
+### Model manifest (all cached offline on-device)
+| Key / constant | Role | modelType | Size | Source | License |
+|---|---|---|---|---|---|
+| `llama1b` · `LLAMA_3_2_1B_INST_Q4_0` | fast default LLM | llamacpp-completion | 737 MB | QVAC registry (HF: unsloth/Llama-3.2-1B-Instruct-GGUF) | Llama 3.2 |
+| `medpsy4b` · HF GGUF URL | **medical hero** (reasoning) | llamacpp-completion | 2.5 GB | HF: `qvac/MedPsy-4B-GGUF` (medpsy-4b-q4_k_m-imat) | per QVAC MedPsy |
+| `medgemma4b` · `MEDGEMMA_4B_IT_Q4_1` | medical baseline | llamacpp-completion | 2.56 GB | QVAC registry (MedGemma) | per MedGemma |
+| `EMBEDDINGGEMMA_300M_Q8_0` | RAG embeddings (768-d) | llamacpp-embedding | 313 MB | QVAC registry | per EmbeddingGemma |
+| `WHISPER_EN_BASE_Q8_0` | speech-to-text | whisper | 78 MB | QVAC registry (ggerganov/whisper.cpp) | MIT |
+
+> Run the whole thing: **`npm run demo`** (grounded answer → red-flag → refusal → P2P delegation).
 
 ---
 
@@ -70,9 +100,11 @@ committed at [`evidence/run-sample.jsonl`](./evidence/run-sample.jsonl); the res
 Each numeric field is explicitly labelled **measured (by us, wall-clock)** vs **SDK-reported
 (by QVAC)**. *Measured TTFT* is the wall-clock time from our request until the first streamed
 token reaches the CLI (includes our overhead); *SDK-reported TTFT* is QVAC's own internal
-time-to-first-token — so SDK TTFT is always ≤ measured, and the gap is our harness overhead.
-(For reasoning models like MedPsy we emit the clean final answer in one block, so *measured*
-TTFT there reflects full-answer latency, not first-token — SDK TTFT remains the true value.)
+time-to-first-token — so SDK TTFT is always ≤ measured, the gap being harness overhead.
+**Reasoning models (MedPsy):** we stream `contentDelta` (answer) live and route `thinkingDelta`
+(reasoning) to a side status, so the evidence logs **`ttft_content_ms`** (time to first *answer*
+token) and **`thinking_ms`** separately. Measured answer-TTFT now tracks the SDK again; the extra
+latency before the answer is the reasoning phase (reported, not hidden).
 
 ### Model cache / storage
 QVAC stores its model registry corestore + downloaded weights under `HOME_DIR/.qvac`. To keep
@@ -144,8 +176,17 @@ the topic is a pre-shared secret. Use `--provider-key <hex>` to target a specifi
   pre-shared key (we have it) + a local DHT bootstrap or swarm relays (not exercised; WAN was up).
 - **Encryption:** the peer link is end-to-end encrypted (Holepunch Noise/UDX) per the docs; logged
   in evidence as `e2e_encrypted: "per-docs"` (not independently verified in code).
-- **Fallback:** a `heartbeat()` liveness probe; on failure the engine runs a local model and logs a
-  `fallback` event. New evidence event types: `delegation`, `fallback`, `bench`.
+- **Fallback:** a `heartbeat()` liveness probe at load; on failure the engine runs a local model and
+  logs a `fallback` event. New evidence event types: `delegation`, `fallback`, `bench`.
+- **Mid-stream watchdog:** during a delegated completion, if the provider goes silent
+  (`streamStallMs`) or no first event arrives (`firstEventMs`) or the connection errors, the engine
+  `cancel()`s the remote request and transparently re-runs on the local engine, logging a
+  `{fallback, reason:"stream_stalled"}` event (exit 0, no hang). Demo it deterministically with
+  `ask --delegate --simulate-stall` (localhost transfers too fast to interrupt externally).
+- **Private mesh / security:** `--topic` derives the provider key deterministically, so a topic is
+  **guessable** — anyone who knows it can connect. For a private mesh use `serve --allow <pubkey,…>`
+  (a Hyperswarm firewall: only listed peers are admitted; others are rejected and fall back to local)
+  and share the explicit `--provider-key` out of band. The firewall config is recorded in the session event.
 
 ## Grounded medical triage support (Day 3)
 

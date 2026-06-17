@@ -19,7 +19,8 @@
     "serve": "tsx packages/node-app/src/cli.ts serve",
     "bench": "tsx packages/node-app/src/cli.ts bench",
     "prefetch:embeddings": "node scripts/prefetch-embeddings.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "demo": "bash scripts/demo.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
