@@ -11,7 +11,7 @@
  *   lifeline serve --topic T [--model m] [--seed hex] [--no-warm]
  *   lifeline bench "<q>" (--topic T | --provider-key K) [--model m] [--json]
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,7 +70,7 @@ function setupQvacEnv(role: "provider" | "consumer"): void {
 }
 
 // --- tiny arg parser (no deps) ---
-const BOOL_FLAGS = new Set(["delegate", "no-stream", "json", "no-warm", "help", "h"]);
+const BOOL_FLAGS = new Set(["delegate", "no-stream", "json", "no-warm", "simulate-stall", "help", "h"]);
 interface Args {
   command?: string;
   positionals: string[];
@@ -176,29 +176,39 @@ async function runCompletion(
   messages: ChatMsg[],
   stream: boolean,
   sink: (s: string) => void,
+  onThinking?: (delta: string) => void,
 ): Promise<MeasuredInference> {
   const t0 = performance.now();
+  let measured: MeasuredInference;
   if (stream) {
     let firstAt = 0;
     let chunks = 0;
-    const it = engine.complete({ modelId, messages, stream: true }) as AsyncIterable<string>;
+    const it = engine.complete({ modelId, messages, stream: true, onThinking }) as AsyncIterable<string>;
     for await (const tok of it) {
       if (chunks === 0) firstAt = performance.now();
       sink(tok);
       chunks++;
     }
     const total = performance.now() - t0;
-    return {
+    measured = {
       ttft_ms: firstAt ? firstAt - t0 : total,
       total_ms: total,
       completion_tokens: chunks,
       tokens_per_sec: chunks > 0 ? chunks / (total / 1000) : 0,
     };
+  } else {
+    const text = await (engine.complete({ modelId, messages, stream: false }) as Promise<string>);
+    sink(text + "\n");
+    const total = performance.now() - t0;
+    measured = { ttft_ms: total, total_ms: total, completion_tokens: 0, tokens_per_sec: 0 };
   }
-  const text = await (engine.complete({ modelId, messages, stream: false }) as Promise<string>);
-  sink(text + "\n");
-  const total = performance.now() - t0;
-  return { ttft_ms: total, total_ms: total, completion_tokens: 0, tokens_per_sec: 0 };
+  // Engine-measured split (time-to-first-CONTENT vs reasoning), if available.
+  const timing = engine.lastTiming?.();
+  if (timing) {
+    if (timing.ttft_content_ms) measured.ttft_content_ms = timing.ttft_content_ms;
+    if (timing.thinking_ms) measured.thinking_ms = timing.thinking_ms;
+  }
+  return measured;
 }
 
 function buildMessages(prompt: string, system: string): ChatMsg[] {
@@ -246,6 +256,9 @@ async function runAsk(args: Args): Promise<void> {
           providerPublicKey: providerKey,
           timeout: fnum(flags, "timeout"),
           healthCheckTimeout: fnum(flags, "health-timeout"),
+          streamStallMs: fnum(flags, "stall-ms"),
+          firstEventMs: fnum(flags, "first-event-ms"),
+          simulateStall: fbool(flags, "simulate-stall"),
           onProgress: makeProgressReporter(json),
         }
       : { kind: "local", onProgress: makeProgressReporter(json) },
@@ -330,7 +343,8 @@ async function runAsk(args: Args): Promise<void> {
       sdk_load: engine.loadStats?.(),
     });
 
-    const di: DelegationInfo = engine.delegationInfo?.() ?? { served_by: "local" };
+    // Provisional, post-LOAD view (may flip to local if the stream stalls mid-completion).
+    let di: DelegationInfo = engine.delegationInfo?.() ?? { served_by: "local" };
     if (!json) {
       const servedNote = di.served_by === "remote" ? "remote peer" : delegate ? "local (FALLBACK)" : "local";
       process.stderr.write(`  ✓ loaded in ${loadMs.toFixed(0)} ms · served_by: ${servedNote}\n\n💬 ${prompt}\n\n`);
@@ -338,11 +352,32 @@ async function runAsk(args: Args): Promise<void> {
     }
 
     let answer = "";
-    const measured = await runCompletion(engine, modelId, messages, stream, (s) => {
-      answer += s;
-      out(s);
-    });
+    let thinkingChars = 0;
+    let reasoningShown = false;
+    const measured = await runCompletion(
+      engine,
+      modelId,
+      messages,
+      stream,
+      (s) => {
+        answer += s;
+        out(s);
+      },
+      (delta) => {
+        thinkingChars += delta.length;
+        if (!json && !reasoningShown) {
+          process.stderr.write("  🤔 reasoning…\n");
+          reasoningShown = true;
+        }
+      },
+    );
+    if (thinkingChars > 0) measured.thinking_chars = thinkingChars;
+    // Re-read after the completion: a mid-stream stall may have flipped this to local.
+    di = engine.delegationInfo?.() ?? di;
     if (!json) process.stdout.write("\n");
+    if (!json && thinkingChars > 0) {
+      process.stderr.write(`  (reasoned ${measured.thinking_ms ?? "?"} ms · ${thinkingChars} chars — kept out of the answer above)\n`);
+    }
 
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
     logger.inference({ modelId, prompt_chars: prompt.length, prompt_tokens: sdk?.prompt_tokens, measured, sdk_reported: sdk });
@@ -362,12 +397,25 @@ async function runAsk(args: Args): Promise<void> {
       logger.fallback({ reason: di.fallback_reason ?? "provider unavailable", topic, peer_key: providerKey });
     }
 
-    // Sources + the non-removable disclaimer.
+    // Grounding check: every citation the model emits must be a passage we actually retrieved.
+    let hallucinated: string[] = [];
+    if (ragPath && tagged.length) {
+      const retrievedTags = tagged.map((t) => t.tag);
+      const citedTags = [...new Set(Array.from(answer.matchAll(/\[S(\d+)\]/g), (m) => `S${m[1]}`))];
+      hallucinated = citedTags.filter((c) => !retrievedTags.includes(c));
+      logger.groundingCheck({ cited: citedTags, retrieved: retrievedTags, hallucinated_cites: hallucinated });
+    }
+
+    // Sources (with grounding snippet) + the non-removable disclaimer.
     if (!json) {
+      if (hallucinated.length) {
+        process.stderr.write(`\n  ⚠ flagged invalid citation(s) not in retrieved sources: ${hallucinated.join(", ")}\n`);
+      }
       if (tagged.length) {
         process.stdout.write(`\nSources (retrieved locally from the field manual):\n`);
         for (const t of tagged) {
           process.stdout.write(`  [${t.tag}] ${t.p.source} § ${t.p.section}  (score ${t.p.score.toFixed(2)})\n`);
+          process.stdout.write(`        “${t.p.snippet}…”\n`);
         }
       }
       process.stdout.write(`\n${MEDICAL_DISCLAIMER}\n`);
@@ -387,7 +435,8 @@ async function runAsk(args: Args): Promise<void> {
           emergency_notice: safety.red_flag ? EMERGENCY_NOTICE : undefined,
           answer,
           disclaimer: MEDICAL_DISCLAIMER,
-          sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score })),
+          sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score, snippet: t.p.snippet })),
+          hallucinated_cites: hallucinated,
           peer_key: di.peer_key,
           transport_setup_ms: di.transport_setup_ms,
           load_ms: Math.round(loadMs),
@@ -585,17 +634,51 @@ function printBench(local: BenchRow, delegated: BenchRow, evidencePath: string):
 }
 
 // ============================ medbench ============================
-const MEDBENCH_QUESTIONS = ["How do I treat severe bleeding?", "What should I do for a burn?"];
-
+interface MedQuestion {
+  q: string;
+  expect: string[];
+}
 interface MedRow {
   model: string;
   question: string;
-  ttft_ms?: number;
-  tokens_per_sec?: number;
-  completion_tokens?: number;
+  ttft_content_ms?: number;
+  answer_tokens?: number;
+  thinking_tokens?: number;
+  answer_tokens_per_sec?: number;
   total_ms: number;
   backend_device?: string;
+  correct: number;
+  expected: number;
+  matched: string[];
+  missed: string[];
   answer: string;
+}
+
+const DEFAULT_MEDBENCH: MedQuestion[] = [
+  { q: "How do I treat severe bleeding?", expect: ["direct pressure", "tourniquet", "emergency"] },
+  { q: "What should I do for a burn?", expect: ["cool", "water", "cover"] },
+];
+
+function loadMedQuestions(ragPath: string, positional: string): MedQuestion[] {
+  if (positional.trim()) return [{ q: positional, expect: [] }];
+  for (const c of [join(ragPath, "medbench-questions.json"), join(REPO_ROOT, "corpus", "medbench-questions.json")]) {
+    try {
+      const data = JSON.parse(readFileSync(c, "utf8")) as { questions?: MedQuestion[] } | MedQuestion[];
+      const qs = Array.isArray(data) ? data : data.questions;
+      if (qs && qs.length) return qs;
+    } catch {
+      /* try next */
+    }
+  }
+  return DEFAULT_MEDBENCH;
+}
+
+function scoreAnswer(answer: string, expect: string[]): { matched: string[]; missed: string[] } {
+  const a = answer.toLowerCase();
+  const matched: string[] = [];
+  const missed: string[] = [];
+  for (const fact of expect) (a.includes(fact.toLowerCase()) ? matched : missed).push(fact);
+  return { matched, missed };
 }
 
 async function runMedbench(args: Args): Promise<void> {
@@ -606,9 +689,9 @@ async function runMedbench(args: Args): Promise<void> {
 
   const ragPath = fstr(flags, "rag");
   if (!ragPath) throw new Error("medbench needs --rag <corpus>");
-  const maxTokens = fnum(flags, "max-tokens") ?? 256;
-  const topK = fnum(flags, "top-k") ?? 4;
-  const questions = args.positionals.length ? [args.positionals.join(" ")] : MEDBENCH_QUESTIONS;
+  const maxTokens = fnum(flags, "max-tokens") ?? 320;
+  const topK = fnum(flags, "top-k") ?? 3;
+  const questions = loadMedQuestions(ragPath, args.positionals.join(" "));
 
   const medpsy: ModelRef = MODELS.medpsy4b;
   const medgemma: ModelRef = MODELS.medgemma4b;
@@ -625,46 +708,68 @@ async function runMedbench(args: Args): Promise<void> {
   const engine = createEngine({ kind: "local", onProgress: makeProgressReporter(json) });
   const rows: MedRow[] = [];
 
-  if (!json) process.stderr.write(`\nLifeline medbench · MedPsy-4B vs MedGemma-4B · grounded in ${ragPath}\n`);
+  if (!json) process.stderr.write(`\nLifeline medbench · MedPsy-4B vs MedGemma-4B · ${questions.length} grounded Q · ${ragPath}\n`);
 
   try {
     await kb.open();
     const ing = await kb.ingest(ragPath);
     logger.ragIngest(ing);
 
-    const retrieved: Array<{ q: string; tagged: Array<{ tag: string; p: RetrievedPassage }> }> = [];
-    for (const q of questions) {
+    const retrieved: Array<{ q: string; expect: string[]; tagged: Array<{ tag: string; p: RetrievedPassage }> }> = [];
+    for (const { q, expect } of questions) {
       const r = await kb.retrieve(q, topK);
       logger.ragSearch(r.stats);
-      retrieved.push({ q, tagged: r.passages.map((p, i) => ({ tag: `S${i + 1}`, p })) });
+      retrieved.push({ q, expect, tagged: r.passages.map((p, i) => ({ tag: `S${i + 1}`, p })) });
     }
 
     for (const model of benchModels) {
       if (!json) process.stderr.write(`\n▶ ${model.label}\n`);
-      const modelId = await engine.loadModel({ model });
-      for (const { q, tagged } of retrieved) {
+      for (const { q, expect, tagged } of retrieved) {
+        // Reload per question: one loaded model = one shared KV-cache, so we reset
+        // it between questions to keep each independent (and avoid context overflow).
+        const modelId = await engine.loadModel({ model });
         const messages: ChatMsg[] = [
           { role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) },
           { role: "user", content: q },
         ];
         let answer = "";
-        const measured = await runCompletion(engine, modelId, messages, false, (s) => {
-          answer += s;
-        });
+        const measured = await runCompletion(
+          engine,
+          modelId,
+          messages,
+          true,
+          (s) => {
+            answer += s;
+          },
+          () => {},
+        );
+        const timing = engine.lastTiming?.() ?? null;
         const sdk = engine.lastStats?.() ?? null;
+        const answerTokens = timing?.content_tokens ?? measured.completion_tokens;
+        const genMs = Math.max(1, measured.total_ms - (timing?.ttft_content_ms ?? 0));
+        const { matched, missed } = scoreAnswer(answer, expect);
         rows.push({
           model: model.label,
           question: q,
-          ttft_ms: sdk?.ttft_ms,
-          tokens_per_sec: sdk?.tokens_per_sec,
-          completion_tokens: sdk?.completion_tokens,
+          ttft_content_ms: timing?.ttft_content_ms ?? measured.ttft_ms,
+          answer_tokens: answerTokens,
+          thinking_tokens: timing?.thinking_tokens ?? 0,
+          answer_tokens_per_sec: answerTokens ? answerTokens / (genMs / 1000) : 0,
           total_ms: Math.round(measured.total_ms),
           backend_device: sdk?.backend_device,
+          correct: matched.length,
+          expected: expect.length,
+          matched,
+          missed,
           answer: answer.trim(),
         });
-        if (!json) process.stderr.write(`  ✓ "${q.slice(0, 38)}…"  ${num(sdk?.tokens_per_sec)} tok/s · ${sdk?.completion_tokens ?? "?"} tokens · ${Math.round(measured.total_ms)} ms\n`);
+        if (!json) {
+          process.stderr.write(
+            `  ✓ "${q.slice(0, 34)}…"  answer ${answerTokens} tok (+${timing?.thinking_tokens ?? 0} think) · facts ${matched.length}/${expect.length} · ${Math.round(measured.total_ms)} ms\n`,
+          );
+        }
+        await engine.unload(modelId);
       }
-      await engine.unload(modelId);
     }
   } finally {
     await kb.close();
@@ -672,7 +777,7 @@ async function runMedbench(args: Args): Promise<void> {
   }
 
   const note =
-    "On-device latency / token-efficiency + qualitative answers. NOT a validated accuracy benchmark (no labeled test set).";
+    "On-device latency + a small HAND-BUILT grounded-correctness check (does the answer mention the expected facts that are present in the CC0 corpus). NOT a validated clinical benchmark, and NOT QVAC's published numbers — only what we measured here. Answer tokens EXCLUDE reasoning.";
   logger.medbench({ corpus: ragPath, embed_model: kb.embedLabel, note, rows });
   const md = renderMedbenchMd(questions, rows, note);
   const mdPath = logger.path.replace(/run-(.*)\.jsonl$/, "medbench-$1.md");
@@ -686,21 +791,47 @@ async function runMedbench(args: Args): Promise<void> {
   process.stderr.write(`  Evidence: ${logger.path}\n  Table: ${mdPath}\n\n`);
 }
 
-function renderMedbenchMd(questions: string[], rs: MedRow[], note: string): string {
+function modelSummary(rs: MedRow[], model: string): { facts: string; tokens: number; think: number; ttft: number } {
+  const r = rs.filter((x) => x.model === model);
+  const correct = r.reduce((s, x) => s + x.correct, 0);
+  const expected = r.reduce((s, x) => s + x.expected, 0);
+  return {
+    facts: `${correct}/${expected}`,
+    tokens: Math.round(r.reduce((s, x) => s + (x.answer_tokens ?? 0), 0) / Math.max(1, r.length)),
+    think: Math.round(r.reduce((s, x) => s + (x.thinking_tokens ?? 0), 0) / Math.max(1, r.length)),
+    ttft: Math.round(r.reduce((s, x) => s + (x.ttft_content_ms ?? 0), 0) / Math.max(1, r.length)),
+  };
+}
+
+function renderMedbenchMd(questions: MedQuestion[], rs: MedRow[], note: string): string {
+  const models = [...new Set(rs.map((r) => r.model))];
   const lines: string[] = ["# Lifeline medbench — MedPsy-4B vs MedGemma-4B", "", `> ${note}`, ""];
-  lines.push("## Latency / efficiency (on-device)", "");
-  lines.push("| Question | Model | TTFT ms | tok/s | tokens | total ms | backend |");
-  lines.push("|---|---|--:|--:|--:|--:|:--|");
+  lines.push("## Summary (averaged across questions)", "");
+  lines.push("| Model | grounded facts | avg answer tokens | avg reasoning tokens | avg TTFC ms |");
+  lines.push("|---|--:|--:|--:|--:|");
+  for (const m of models) {
+    const s = modelSummary(rs, m);
+    lines.push(`| ${m} | ${s.facts} | ${s.tokens} | ${s.think} | ${s.ttft} |`);
+  }
+  lines.push(
+    "",
+    "_TTFC = time to first **content** (answer) token. **answer tokens exclude reasoning** — this is why MedPsy's earlier 'verbose' count was misleading: most of its tokens were reasoning, not answer._",
+    "",
+  );
+  lines.push("## Per-question detail", "");
+  lines.push("| Question | Model | answer tok | reasoning tok | answer tok/s | total ms | facts | backend |");
+  lines.push("|---|---|--:|--:|--:|--:|:--:|:--|");
   for (const r of rs) {
     lines.push(
-      `| ${r.question} | ${r.model} | ${num(r.ttft_ms, 0)} | ${num(r.tokens_per_sec, 1)} | ${r.completion_tokens ?? "?"} | ${r.total_ms} | ${r.backend_device ?? "?"} |`,
+      `| ${r.question} | ${r.model} | ${r.answer_tokens ?? "?"} | ${r.thinking_tokens ?? 0} | ${num(r.answer_tokens_per_sec, 1)} | ${r.total_ms} | ${r.correct}/${r.expected} | ${r.backend_device ?? "?"} |`,
     );
   }
   lines.push("", "## Answers (qualitative)", "");
-  for (const q of questions) {
+  for (const { q } of questions) {
     lines.push(`### ${q}`, "");
     for (const r of rs.filter((x) => x.question === q)) {
-      lines.push(`**${r.model}:**`, "", r.answer, "");
+      const miss = r.missed.length ? `  _(missed: ${r.missed.join(", ")})_` : "";
+      lines.push(`**${r.model}** — facts ${r.correct}/${r.expected}:${miss}`, "", r.answer, "");
     }
   }
   return lines.join("\n");

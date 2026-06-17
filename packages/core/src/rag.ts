@@ -32,6 +32,17 @@ export interface RetrievedPassage {
   section: string;
   content: string;
   score: number;
+  /** Best-effort [start,end) char offsets of this passage within its source file. */
+  charRange?: [number, number];
+  /** Truncated grounding snippet (first ~120 chars of the passage). */
+  snippet: string;
+}
+
+interface ChunkMeta {
+  source: string;
+  section: string;
+  charRange?: [number, number];
+  snippet: string;
 }
 
 export interface IngestStats {
@@ -117,7 +128,8 @@ export class KnowledgeBase {
   private readonly chunkOverlap: number;
   private readonly progressCb?: (p: ProgressUpdate) => void;
   private embedModelId?: string;
-  private readonly idMap = new Map<string, { source: string; section: string }>();
+  /** Persisted chunk metadata — retrieval reads this, never re-parses the id. */
+  private readonly idMap = new Map<string, ChunkMeta>();
 
   constructor(opts: KnowledgeBaseOptions = {}) {
     this.embedSrc = opts.embedSrc ?? EMBEDDINGGEMMA_300M_Q8_0;
@@ -164,7 +176,13 @@ export class KnowledgeBase {
         pieces.forEach((content, i) => {
           const id = [source, title, i].join(SEP);
           chunks.push({ id, content, source, section: title });
-          this.idMap.set(id, { source, section: title });
+          // Best-effort char range: locate a verbatim tail of the chunk in the file.
+          const tail = content.slice(-50);
+          const ti = text.indexOf(tail);
+          const charRange: [number, number] | undefined =
+            ti >= 0 ? [Math.max(0, ti + tail.length - content.length), ti + tail.length] : undefined;
+          const snippet = content.replace(/\s+/g, " ").trim().slice(0, 120);
+          this.idMap.set(id, { source, section: title, charRange, snippet });
         });
       }
     }
@@ -207,6 +225,7 @@ export class KnowledgeBase {
     const t0 = performance.now();
     const results = await ragSearch({ modelId: this.embeddingModelId, query, topK, workspace: this.workspace });
     const passages: RetrievedPassage[] = results.map((r) => {
+      // Read the persisted metadata map (do NOT re-parse the id); fall back only if absent.
       const meta = this.idMap.get(r.id);
       const [source = "?", section = ""] = r.id.split(SEP);
       return {
@@ -215,6 +234,8 @@ export class KnowledgeBase {
         section: meta?.section ?? section,
         content: r.content,
         score: r.score,
+        charRange: meta?.charRange,
+        snippet: meta?.snippet ?? r.content.replace(/\s+/g, " ").trim().slice(0, 120),
       };
     });
     const stats: SearchStats = {

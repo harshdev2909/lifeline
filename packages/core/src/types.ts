@@ -65,6 +65,18 @@ export interface ProgressUpdate {
 
 export type EngineKind = "local" | "delegated";
 
+/** Timing split for a completion, distinguishing reasoning from answer latency. */
+export interface CompletionTiming {
+  /** ms spent emitting reasoning before the first answer token (0 if no reasoning). */
+  thinking_ms: number;
+  /** ms from request start to the first ANSWER (content) token. */
+  ttft_content_ms: number;
+  /** Answer-only token count (contentDelta events) — excludes reasoning. */
+  content_tokens: number;
+  /** Reasoning token count (thinkingDelta events). */
+  thinking_tokens: number;
+}
+
 /**
  * Where the most recent operation was actually served, plus P2P transport detail.
  * Engine-neutral so the CLI can log delegation evidence without knowing the engine type.
@@ -96,6 +108,8 @@ export interface InferenceEngine {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    /** Called with reasoning deltas (kept OUT of the streamed answer) for reasoning models. */
+    onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string>;
 
   unload(modelId: string): Promise<void>;
@@ -104,6 +118,10 @@ export interface InferenceEngine {
 
   /** SDK-reported stats from the most recent completion, if the engine surfaced them. */
   lastStats?(): CompletionStats | null;
+  /** Thinking-vs-content timing split for the most recent completion. */
+  lastTiming?(): CompletionTiming | null;
+  /** Reasoning text (aside) from the most recent completion, if any. */
+  lastThinking?(): string;
   /** Where the last op was served (local vs remote) + P2P transport detail. */
   delegationInfo?(): DelegationInfo | null;
   /** SDK-reported load/download timing gauges from the most recent loadModel(). */

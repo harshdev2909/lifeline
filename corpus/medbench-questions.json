@@ -1,0 +1,15 @@
+{
+  "note": "Hand-built grounded-correctness probe. Each question's answer is present in corpus/field-first-aid.md. `expect` = key facts that a correct grounded answer should mention (case-insensitive substring match). This is a tiny on-device sanity check, NOT a validated clinical benchmark.",
+  "questions": [
+    { "q": "How do I treat severe bleeding?", "expect": ["direct pressure", "tourniquet", "do not remove", "emergency"] },
+    { "q": "What should I do for a burn?", "expect": ["cool", "water", "20 minutes", "cover"] },
+    { "q": "How do I help an adult who is choking?", "expect": ["back blows", "abdominal thrusts", "five"] },
+    { "q": "What is the RICE method for a sprain?", "expect": ["rest", "ice", "compress", "elevate"] },
+    { "q": "How do I treat heat stroke?", "expect": ["cool", "shade", "emergency", "water"] },
+    { "q": "What are the signs of shock and what should I do?", "expect": ["lay", "legs", "warm", "emergency"] },
+    { "q": "How do I respond to anaphylaxis?", "expect": ["adrenaline", "thigh", "emergency"] },
+    { "q": "What should I do if someone is unresponsive and not breathing?", "expect": ["cpr", "compressions", "chest", "aed"] },
+    { "q": "How do I care for a suspected broken bone?", "expect": ["immobilize", "do not", "support"] },
+    { "q": "Should I use ice or butter on a burn?", "expect": ["cool", "water", "do not"] }
+  ]
+}

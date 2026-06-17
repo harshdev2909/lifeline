@@ -24,6 +24,12 @@ export interface MeasuredInference {
   total_ms: number;
   tokens_per_sec: number;
   completion_tokens: number;
+  /** Time to first ANSWER (content) token — distinct from thinking for reasoning models. */
+  ttft_content_ms?: number;
+  /** ms spent on reasoning before the answer (0/absent for non-reasoning models). */
+  thinking_ms?: number;
+  /** Reasoning length (chars), captured as an aside (not shown in the answer). */
+  thinking_chars?: number;
 }
 
 export interface SessionEvent {
@@ -139,6 +145,16 @@ export interface SafetyEvent {
   grounded: boolean;
   action: string;
 }
+export interface GroundingCheckEvent {
+  type: "grounding_check";
+  ts: string;
+  /** Citation tags the model emitted (e.g. ["S1","S3"]). */
+  cited: string[];
+  /** Citation tags that were actually retrieved this turn. */
+  retrieved: string[];
+  /** Cited tags NOT retrieved this turn — hallucinated/invalid citations. */
+  hallucinated_cites: string[];
+}
 export interface SttEvent {
   type: "stt";
   ts: string;
@@ -159,11 +175,20 @@ export interface TtsEvent {
 export interface MedbenchRow {
   model: string;
   question: string;
-  ttft_ms?: number;
-  tokens_per_sec?: number;
-  completion_tokens?: number;
+  /** time to first ANSWER token (ms) */
+  ttft_content_ms?: number;
+  /** answer-only tokens (excludes reasoning) */
+  answer_tokens?: number;
+  /** reasoning tokens (separate from the answer) */
+  thinking_tokens?: number;
+  answer_tokens_per_sec?: number;
   total_ms: number;
   backend_device?: string;
+  /** grounded-correctness: expected facts matched / total, + which */
+  correct?: number;
+  expected?: number;
+  matched?: string[];
+  missed?: string[];
   answer: string;
 }
 export interface MedbenchEvent {
@@ -187,6 +212,7 @@ export type EvidenceEvent =
   | RagIngestEvent
   | RagSearchEvent
   | SafetyEvent
+  | GroundingCheckEvent
   | SttEvent
   | TtsEvent
   | MedbenchEvent;
@@ -282,6 +308,10 @@ export class RunLogger {
 
   safety(args: Omit<SafetyEvent, "type" | "ts">): void {
     this.write({ type: "safety", ts: new Date().toISOString(), ...args });
+  }
+
+  groundingCheck(args: Omit<GroundingCheckEvent, "type" | "ts">): void {
+    this.write({ type: "grounding_check", ts: new Date().toISOString(), ...args });
   }
 
   stt(args: Omit<SttEvent, "type" | "ts">): void {

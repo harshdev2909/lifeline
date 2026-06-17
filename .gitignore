@@ -32,6 +32,7 @@ evidence/*.jsonl
 !evidence/run-sample-rag-delegated.jsonl
 !evidence/run-sample-medbench.jsonl
 !evidence/run-sample-voice.jsonl
+!evidence/run-sample-stall-fallback.jsonl
 
 # medbench markdown tables (keep one sample)
 evidence/medbench-*.md

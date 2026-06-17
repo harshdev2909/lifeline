@@ -17,6 +17,7 @@ import {
   completion,
   unloadModel,
   close,
+  cancel,
   heartbeat,
   profiler,
   LLAMA_3_2_1B_INST_Q4_0,
@@ -27,6 +28,7 @@ import type { CompletionStats as QvacStats, LoadModelOptions, ModelProgressUpdat
 import type {
   ChatMsg,
   CompletionStats,
+  CompletionTiming,
   DelegationInfo,
   EngineKind,
   InferenceEngine,
@@ -79,6 +81,20 @@ export interface EngineOptions {
   timeout?: number;
   /** Provider liveness/health-check timeout (ms). */
   healthCheckTimeout?: number;
+  /** Watchdog: max ms to wait for the FIRST delegated event before falling back. */
+  firstEventMs?: number;
+  /** Watchdog: max ms of mid-stream silence before declaring the provider stalled. */
+  streamStallMs?: number;
+  /** TEST/fault-injection: force the delegated stream to stall, to exercise fallback. */
+  simulateStall?: boolean;
+}
+
+/** Thrown by the delegated watchdog when the remote stream goes silent. */
+class StallError extends Error {
+  constructor(readonly reason: "no_first_token" | "stream_stalled") {
+    super(reason);
+    this.name = "StallError";
+  }
 }
 
 function fromQvacStats(s: QvacStats | undefined): CompletionStats | null {
@@ -106,17 +122,56 @@ function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) 
   return completion({ modelId, history, stream, captureThinking: true } as Parameters<typeof completion>[0]);
 }
 
-/**
- * Stream only the VISIBLE answer content. Reasoning models (e.g. MedPsy) emit
- * chain-of-thought as separate `thinkingDelta` events; we surface `contentDelta`
- * only so callers get the clean answer, not the raw `<think>` reasoning.
- * (For non-reasoning models, all output arrives as contentDelta.)
- */
-async function* streamContent(run: ReturnType<typeof completion>): AsyncGenerator<string> {
-  for await (const ev of run.events) {
-    if (ev.type === "contentDelta") yield ev.text;
-  }
+interface StreamOut {
+  thinking_ms: number;
+  ttft_content_ms: number;
+  content_tokens: number;
+  thinking_tokens: number;
+  thinkingText: string;
+  stats: CompletionStats | null;
 }
+
+/**
+ * Consume `run.events` (the canonical API): yield ANSWER tokens (`contentDelta`)
+ * live, route reasoning (`thinkingDelta`) to `onThinking` (kept out of the answer),
+ * and record the thinking-vs-content timing split + final stats into `out`.
+ * Works identically for reasoning models (MedPsy → captureThinking routes its
+ * `<think>` to thinkingDelta) and non-reasoning models (all contentDelta).
+ */
+async function* runEvents(
+  run: ReturnType<typeof completion>,
+  onThinking: ((d: string) => void) | undefined,
+  out: StreamOut,
+): AsyncGenerator<string> {
+  const t0 = performance.now();
+  let firstThinkAt = 0;
+  let firstContentAt = 0;
+  for await (const ev of run.events) {
+    if (ev.type === "thinkingDelta") {
+      if (!firstThinkAt) firstThinkAt = performance.now();
+      out.thinking_tokens++;
+      onThinking?.(ev.text);
+    } else if (ev.type === "contentDelta") {
+      if (!firstContentAt) firstContentAt = performance.now();
+      out.content_tokens++;
+      yield ev.text;
+    }
+  }
+  const final = await run.final.catch(() => undefined);
+  out.stats = fromQvacStats(final?.stats);
+  out.thinkingText = final?.thinkingText ?? "";
+  out.ttft_content_ms = firstContentAt ? Math.round(firstContentAt - t0) : 0;
+  out.thinking_ms = firstThinkAt ? Math.round((firstContentAt || performance.now()) - firstThinkAt) : 0;
+}
+
+const emptyOut = (): StreamOut => ({
+  thinking_ms: 0,
+  ttft_content_ms: 0,
+  content_tokens: 0,
+  thinking_tokens: 0,
+  thinkingText: "",
+  stats: null,
+});
 
 export class LocalEngine implements InferenceEngine {
   readonly kind = "local" as const;
@@ -126,7 +181,8 @@ export class LocalEngine implements InferenceEngine {
   private unsubscribe?: () => void;
   private lastCompletionStats: CompletionStats | null = null;
   private lastLoadGauges: Record<string, number> = {};
-  private reasoning = false;
+  private lastTimingVal: CompletionTiming | null = null;
+  private lastThinkingText = "";
 
   constructor(opts: EngineOptions = {}) {
     this.progressCb = opts.onProgress;
@@ -139,7 +195,6 @@ export class LocalEngine implements InferenceEngine {
   }
 
   async loadModel({ model }: { model: ModelRef }): Promise<string> {
-    this.reasoning = model.reasoning ?? false;
     const before = this.records.length;
     // SDK boundary: core uses generic ModelRef types; QVAC wants narrower
     // literals (e.g. modelType "llm"). This single cast is where they meet.
@@ -159,28 +214,34 @@ export class LocalEngine implements InferenceEngine {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string> {
     return opts.stream === false ? this.completeOnce(opts) : this.completeStream(opts);
   }
 
-  private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
+  private async *completeStream(opts: {
+    modelId: string;
+    messages: ChatMsg[];
+    onThinking?: (delta: string) => void;
+  }): AsyncGenerator<string> {
     const run = startCompletion(opts.modelId, opts.messages, true);
-    if (this.reasoning) {
-      // Reasoning model: contentDelta leaks <think>; emit the SDK's clean final content instead.
-      const final = await run.final;
-      this.lastCompletionStats = fromQvacStats(final.stats);
-      yield final.contentText;
-      return;
-    }
-    yield* streamContent(run);
-    const final = await run.final.catch(() => undefined);
-    this.lastCompletionStats = fromQvacStats(final?.stats);
+    const out = emptyOut();
+    yield* runEvents(run, opts.onThinking, out);
+    this.lastCompletionStats = out.stats;
+    this.lastThinkingText = out.thinkingText;
+    this.lastTimingVal = {
+      thinking_ms: out.thinking_ms,
+      ttft_content_ms: out.ttft_content_ms,
+      content_tokens: out.content_tokens,
+      thinking_tokens: out.thinking_tokens,
+    };
   }
 
   private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
     const run = startCompletion(opts.modelId, opts.messages, false);
     const final = await run.final;
     this.lastCompletionStats = fromQvacStats(final.stats);
+    this.lastThinkingText = final.thinkingText ?? "";
     return final.contentText;
   }
 
@@ -190,6 +251,14 @@ export class LocalEngine implements InferenceEngine {
 
   lastStats(): CompletionStats | null {
     return this.lastCompletionStats;
+  }
+
+  lastTiming(): CompletionTiming | null {
+    return this.lastTimingVal;
+  }
+
+  lastThinking(): string {
+    return this.lastThinkingText;
   }
 
   delegationInfo(): DelegationInfo {
@@ -244,16 +313,23 @@ export class DelegatedEngine implements InferenceEngine {
   private readonly providerPublicKey: string;
   private readonly timeout?: number;
   private readonly healthCheckTimeout: number;
+  private readonly firstEventMs: number;
+  private readonly streamStallMs: number;
+  private readonly simulateStall: boolean;
   private readonly progressCb?: (p: ProgressUpdate) => void;
   private readonly enableProfile: boolean;
 
   private remoteModelId?: string;
   private local?: LocalEngine; // created only on fallback
+  private localModelId?: string;
+  private lastModel?: ModelRef;
+  private lastReqId?: string;
   private servedBy: "remote" | "local" = "remote";
   private transportSetupMs = 0;
   private fallbackReason?: string;
   private lastCompletionStats: CompletionStats | null = null;
-  private reasoning = false;
+  private lastTimingVal: CompletionTiming | null = null;
+  private lastThinkingText = "";
 
   constructor(opts: EngineOptions) {
     if (!opts.providerPublicKey) {
@@ -264,13 +340,16 @@ export class DelegatedEngine implements InferenceEngine {
     // First DHT holepunch to a fresh peer can take several seconds; be generous
     // so we actually delegate instead of prematurely falling back to local.
     this.healthCheckTimeout = opts.healthCheckTimeout ?? 20000;
+    this.firstEventMs = opts.firstEventMs ?? 25000;
+    this.streamStallMs = opts.streamStallMs ?? 8000;
+    this.simulateStall = opts.simulateStall ?? false;
     this.progressCb = opts.onProgress;
     this.enableProfile = opts.profile !== false;
     if (this.enableProfile) profiler.enable({ mode: "verbose" });
   }
 
   async loadModel({ model }: { model: ModelRef }): Promise<string> {
-    this.reasoning = model.reasoning ?? false;
+    this.lastModel = model;
     // 1) Liveness probe — also establishes/warms the P2P link. Time it as transport setup.
     const t0 = performance.now();
     let online = false;
@@ -312,46 +391,136 @@ export class DelegatedEngine implements InferenceEngine {
     this.servedBy = "local";
     // Reuse the already-enabled global profiler; don't double-subscribe.
     this.local = new LocalEngine({ onProgress: this.progressCb, profile: false });
-    return this.local.loadModel({ model });
+    this.localModelId = await this.local.loadModel({ model });
+    return this.localModelId;
   }
 
   complete(opts: {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string> {
     if (this.servedBy === "local" && this.local) return this.local.complete(opts);
     return opts.stream === false ? this.completeOnce(opts) : this.completeStream(opts);
   }
 
-  private async *completeStream(opts: { modelId: string; messages: ChatMsg[] }): AsyncGenerator<string> {
+  private async *completeStream(opts: {
+    modelId: string;
+    messages: ChatMsg[];
+    onThinking?: (delta: string) => void;
+  }): AsyncGenerator<string> {
     const run = startCompletion(opts.modelId, opts.messages, true);
-    if (this.reasoning) {
-      const final = await run.final;
-      this.lastCompletionStats = fromQvacStats(final.stats);
-      yield final.contentText;
+    this.lastReqId = run.requestId;
+    const t0 = performance.now();
+    let firstThinkAt = 0;
+    let firstContentAt = 0;
+    let contentTokens = 0;
+    let thinkingTokens = 0;
+    let sawEvent = false;
+    let yieldedContent = false;
+    const it = run.events[Symbol.asyncIterator]();
+
+    try {
+      // Fault injection: deterministically exercise the stall→fallback path
+      // (a real network stall hits the same code, but localhost is too fast to interrupt).
+      if (this.simulateStall) throw new StallError("stream_stalled");
+      for (;;) {
+        // Watchdog: bound the wait for the next event. Before any event, allow a
+        // generous first-event budget; once events flow, fail fast on silence.
+        const budget = sawEvent ? this.streamStallMs : this.firstEventMs;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const stall = new Promise<never>((_, rej) => {
+          timer = setTimeout(() => rej(new StallError(sawEvent ? "stream_stalled" : "no_first_token")), budget);
+        });
+        let res: IteratorResult<{ type: string; text?: string }>;
+        try {
+          res = (await Promise.race([it.next(), stall])) as IteratorResult<{ type: string; text?: string }>;
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+        if (res.done) break;
+        sawEvent = true;
+        const ev = res.value;
+        if (ev.type === "thinkingDelta") {
+          if (!firstThinkAt) firstThinkAt = performance.now();
+          thinkingTokens++;
+          opts.onThinking?.(ev.text ?? "");
+        } else if (ev.type === "contentDelta") {
+          if (!firstContentAt) firstContentAt = performance.now();
+          contentTokens++;
+          yieldedContent = true;
+          yield ev.text ?? "";
+        }
+      }
+    } catch (err) {
+      // Watchdog stall OR a mid-stream transport error (e.g. provider connection
+      // dropped because it was killed). Either way: cancel + fall back to local.
+      const reason = err instanceof StallError ? err.reason : "stream_error";
+      await cancel({ requestId: this.lastReqId }).catch(() => {});
+      this.servedBy = "local";
+      this.fallbackReason = `delegated ${reason}: ${errMsg(err)}`;
+      if (yieldedContent) {
+        // Some answer already streamed; don't duplicate it — stop and flag fallback.
+        this.fallbackReason += " (after partial output)";
+        return;
+      }
+      // Nothing emitted yet → transparently re-run on a local engine.
+      this.local = new LocalEngine({ onProgress: this.progressCb, profile: false });
+      this.localModelId = await this.local.loadModel({ model: this.lastModel as ModelRef });
+      yield* this.localStream(opts);
       return;
     }
-    yield* streamContent(run);
+
     const final = await run.final.catch(() => undefined);
+    this.servedBy = "remote";
     this.lastCompletionStats = fromQvacStats(final?.stats);
+    this.lastThinkingText = final?.thinkingText ?? "";
+    this.lastTimingVal = {
+      ttft_content_ms: firstContentAt ? Math.round(firstContentAt - t0) : 0,
+      thinking_ms: firstThinkAt ? Math.round((firstContentAt || performance.now()) - firstThinkAt) : 0,
+      content_tokens: contentTokens,
+      thinking_tokens: thinkingTokens,
+    };
+  }
+
+  /** Stream from the local fallback engine and mirror its stats/timing. */
+  private async *localStream(opts: { messages: ChatMsg[]; onThinking?: (d: string) => void }): AsyncGenerator<string> {
+    const local = this.local as LocalEngine;
+    const id = this.localModelId as string;
+    yield* local.complete({ modelId: id, messages: opts.messages, stream: true, onThinking: opts.onThinking }) as AsyncGenerator<string>;
+    this.lastCompletionStats = local.lastStats?.() ?? null;
+    this.lastTimingVal = local.lastTiming?.() ?? null;
+    this.lastThinkingText = local.lastThinking?.() ?? "";
   }
 
   private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
     const run = startCompletion(opts.modelId, opts.messages, false);
     const final = await run.final;
     this.lastCompletionStats = fromQvacStats(final.stats);
+    this.lastThinkingText = final.thinkingText ?? "";
     return final.contentText;
   }
 
   async unload(modelId: string): Promise<void> {
-    if (this.servedBy === "local" && this.local) return this.local.unload(modelId);
+    if (this.servedBy === "local" && this.local) return this.local.unload(this.localModelId ?? modelId);
     await unloadModel({ modelId });
   }
 
+  private fellBack(): boolean {
+    return this.servedBy === "local" && this.local !== undefined;
+  }
+
   lastStats(): CompletionStats | null {
-    if (this.servedBy === "local" && this.local) return this.local.lastStats?.() ?? null;
-    return this.lastCompletionStats;
+    return this.fellBack() ? (this.local!.lastStats?.() ?? null) : this.lastCompletionStats;
+  }
+
+  lastTiming(): CompletionTiming | null {
+    return this.fellBack() ? (this.local!.lastTiming?.() ?? null) : this.lastTimingVal;
+  }
+
+  lastThinking(): string {
+    return this.fellBack() ? (this.local!.lastThinking?.() ?? "") : this.lastThinkingText;
   }
 
   delegationInfo(): DelegationInfo {
