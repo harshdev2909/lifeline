@@ -34,6 +34,9 @@ export type { TranscribeResult, TranscribeOptions } from "./voice";
 export { synthesizeToWav } from "./tts";
 export type { TtsResult, TtsOptions } from "./tts";
 
+export { translateToEnglish, translateFromEnglish, isSupportedLang, supportedLangs, TRANSLATION_PAIRS } from "./translate";
+export type { TranslateResult } from "./translate";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,

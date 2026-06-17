@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
-import { loadModel, unloadModel, transcribe, WHISPER_EN_BASE_Q8_0 } from "@qvac/sdk";
+import { loadModel, unloadModel, transcribe, WHISPER_EN_BASE_Q8_0, WHISPER_BASE_Q8_0 } from "@qvac/sdk";
 import type { LoadModelOptions } from "@qvac/sdk";
 
 import type { ModelSrc, ProgressUpdate } from "./types";
@@ -25,6 +25,8 @@ export interface TranscribeResult {
 export interface TranscribeOptions {
   model?: ModelSrc;
   modelLabel?: string;
+  /** Use the multilingual Whisper base (auto-detects language) instead of English-only. */
+  multilingual?: boolean;
   onProgress?: (p: ProgressUpdate) => void;
 }
 
@@ -39,7 +41,7 @@ function wavSeconds(buf: Buffer): number | undefined {
 /** Load Whisper locally, transcribe an audio file, unload. Returns the text + timing. */
 export async function transcribeAudio(path: string, opts: TranscribeOptions = {}): Promise<TranscribeResult> {
   const loadOpts = {
-    modelSrc: opts.model ?? WHISPER_EN_BASE_Q8_0,
+    modelSrc: opts.model ?? (opts.multilingual ? WHISPER_BASE_Q8_0 : WHISPER_EN_BASE_Q8_0),
     modelType: "whisper",
     onProgress: (p: unknown) => opts.onProgress?.(p as ProgressUpdate),
   } as unknown as LoadModelOptions;
@@ -50,7 +52,7 @@ export async function transcribeAudio(path: string, opts: TranscribeOptions = {}
     const text = await transcribe({ modelId, audioChunk: audio });
     return {
       text: text.trim(),
-      model: opts.modelLabel ?? "Whisper base.en (Q8_0)",
+      model: opts.modelLabel ?? (opts.multilingual ? "Whisper base multilingual (Q8_0)" : "Whisper base.en (Q8_0)"),
       transcribe_ms: Math.round(performance.now() - t0),
       audio_bytes: audio.length,
       audio_seconds: wavSeconds(audio),

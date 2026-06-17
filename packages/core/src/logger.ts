@@ -172,6 +172,15 @@ export interface SttEvent {
   transcribe_ms: number;
   text_chars: number;
 }
+export interface TranslationEvent {
+  type: "translation";
+  ts: string;
+  direction: string;
+  src_lang: string;
+  tgt_lang: string;
+  chars: number;
+  ms: number;
+}
 export interface VisionEvent {
   type: "vision";
   ts: string;
@@ -235,7 +244,8 @@ export type EvidenceEvent =
   | SafetyEvent
   | GroundingCheckEvent
   | InjectionGuardEvent
-  | SttEvent
+  | SttEvent  | TranslationEvent
+
   | VisionEvent
   | TtsEvent
   | MedbenchEvent;
@@ -347,6 +357,10 @@ export class RunLogger {
 
   vision(args: Omit<VisionEvent, "type" | "ts">): void {
     this.write({ type: "vision", ts: new Date().toISOString(), ...args });
+  }
+
+  translation(args: Omit<TranslationEvent, "type" | "ts">): void {
+    this.write({ type: "translation", ts: new Date().toISOString(), ...args });
   }
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {

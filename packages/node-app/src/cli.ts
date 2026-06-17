@@ -36,6 +36,8 @@ import {
   topicToProviderKey,
   topicToSeedHex,
   transcribeAudio,
+  translateToEnglish,
+  translateFromEnglish,
   ungroundedRefusal,
 } from "@lifeline/core";
 import type {
@@ -117,6 +119,7 @@ ask options:
   --audio <wavfile>          Voice in: transcribe speech (Whisper, local) and use it as the prompt
   --speak                    Voice out: synthesize the answer to a .wav (Supertonic TTS, local)
   --image <path>             Vision: describe the image (multimodal), then ground the answer
+  --lang <code>              Non-English round-trip (es|fr): translate Q→EN, answer, EN→answer-lang
   --rag <path|dir>           Ground the answer in a corpus (RAG): retrieve passages + cite sources
   --top-k <n>                Passages to retrieve (default: 4)
   --model <key>              ${Object.keys(MODELS).join(" | ")}  (default: llama1b; medical: medpsy4b)
@@ -280,14 +283,25 @@ async function runAsk(args: Args): Promise<void> {
     if (delegate) process.stderr.write(`  Provider key: ${providerKey}\n`);
   }
 
-  // ---- Voice in (LOCAL STT), if --audio ----
+  const lang = fstr(flags, "lang"); // non-English round-trip (e.g. es, fr)
+
+  // ---- Voice in (LOCAL STT), if --audio (multilingual Whisper when --lang) ----
   if (audioPath) {
-    if (!json) process.stderr.write(`🎤 transcribing ${audioPath} (Whisper, LOCAL) …\n`);
-    const stt = await transcribeAudio(audioPath, { onProgress: makeProgressReporter(json) });
+    if (!json) process.stderr.write(`🎤 transcribing ${audioPath} (Whisper${lang ? " multilingual" : ""}, LOCAL) …\n`);
+    const stt = await transcribeAudio(audioPath, { multilingual: Boolean(lang), onProgress: makeProgressReporter(json) });
     prompt = stt.text || prompt;
     logger.stt({ model: stt.model, audio_seconds: stt.audio_seconds, transcribe_ms: stt.transcribe_ms, text_chars: prompt.length });
     if (!json) process.stderr.write(`  ✓ heard (${stt.transcribe_ms} ms): "${prompt}"\n`);
     if (!prompt.trim()) throw new Error("transcription produced no text");
+  }
+
+  // ---- Translate the question into English for the (English) grounded chain ----
+  if (lang && prompt.trim()) {
+    if (!json) process.stderr.write(`🌐 translating question ${lang}→en (Bergamot, LOCAL) …\n`);
+    const tr = await translateToEnglish(prompt, lang, makeProgressReporter(json));
+    logger.translation({ direction: tr.direction, src_lang: tr.src_lang, tgt_lang: tr.tgt_lang, chars: tr.chars, ms: tr.ms });
+    if (!json) process.stderr.write(`  ✓ EN: "${tr.text}"\n`);
+    prompt = tr.text;
   }
 
   // ---- Vision (multimodal describe → findings), if --image. Two-stage: vision describes,
@@ -496,6 +510,16 @@ async function runAsk(args: Args): Promise<void> {
     await engine.unload(modelId);
     logger.modelUnload(modelId);
 
+    // Translate the answer back to the user's language (the chain ran in English).
+    let localizedAnswer: string | undefined;
+    if (lang && answer.trim()) {
+      if (!json) process.stderr.write(`\n🌐 translating answer en→${lang} (Bergamot, LOCAL) …\n`);
+      const tr = await translateFromEnglish(answer.trim(), lang, makeProgressReporter(json));
+      logger.translation({ direction: tr.direction, src_lang: tr.src_lang, tgt_lang: tr.tgt_lang, chars: tr.chars, ms: tr.ms });
+      localizedAnswer = tr.text;
+      if (!json) process.stdout.write(`\n[${lang}] ${localizedAnswer}\n`);
+    }
+
     // Voice out: synthesize the ANSWER (not the reasoning, not the disclaimer).
     let ttsPath: string | undefined;
     if (fbool(flags, "speak") && answer.trim()) {
@@ -519,6 +543,7 @@ async function runAsk(args: Args): Promise<void> {
           disclaimer: MEDICAL_DISCLAIMER,
           sources: tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score, snippet: t.p.snippet })),
           hallucinated_cites: hallucinated,
+          answer_localized: localizedAnswer,
           audio_out: ttsPath,
           peer_key: di.peer_key,
           transport_setup_ms: di.transport_setup_ms,
