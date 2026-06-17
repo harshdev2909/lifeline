@@ -65,9 +65,28 @@ The convenience launcher `./lifeline` is equivalent to `npm run lifeline --`. Th
 
 Each run appends one JSON-per-line log to `evidence/`. A few representative ones are checked in under [`examples/logs/`](./examples/logs) (a grounded answer, a delegated run, an offline fallback, a blocked injection, and more) so you can see the schema without running anything.
 
+## Web interface
+
+A local web interface ships alongside the CLI. It runs in the browser, talks only to a localhost bridge over the same `core`, and does no inference itself — every answer, metric, citation, peer, and animation is real data streamed from the engine.
+
+```bash
+npm run ui
+```
+
+This builds the UI and serves it from the bridge at `http://127.0.0.1:8787`. It is offline-first: fonts and assets are self-hosted and bundled, there is no runtime CDN, and it loads and runs with the network off. For live development, run `npm run bridge` and `npm run web` (the Vite dev server) in separate terminals.
+
+The interface is a focused conversation. Answers stream in token by token; chain-of-thought is shown in a separate, collapsible aside rather than inline; citation chips expand to the exact source snippet; and a quiet indicator shows where each answer ran — this device, a peer, or rerouted home — beside a time-to-first-token and tokens-per-second readout in a monospace face. The red-flag emergency, grounded, and ungrounded-refusal states each have their own calm treatment, and the disclaimer is always present. A live mesh visualizer shows this device and its peers with their roles and models, and animates real delegation and fallback as they happen. Image attachment (vision and OCR), turn-based voice (record → transcribe → answer → speak), a language selector, light and dark themes, and full keyboard and screen-reader support are all included.
+
+| | |
+|---|---|
+| ![A grounded answer with an expanded citation and the telemetry readout](docs/screenshots/02-grounded-answer.png) | ![A real delegation: completion runs on a peer while the mesh shows it serving](docs/screenshots/07-delegation-midflight.png) |
+| A grounded answer with an expanded citation and the per-turn readout | A real delegation — completion runs on a peer; the mesh shows it serving |
+
+More screenshots — the red-flag emergency state, the light theme, and the live mesh — are in [`docs/screenshots/`](./docs/screenshots).
+
 ## How it works
 
-Lifeline is a small core library plus a CLI. The CLI never touches the model SDK directly; it talks to one interface, `InferenceEngine`, and a factory decides whether a given call runs on this device or on a peer. That single seam is what makes delegation invisible to the rest of the code.
+Lifeline is a small core library with a CLI and a web interface on top of it. Neither the CLI nor the browser touches the model SDK directly; they talk to one interface, `InferenceEngine`, and a factory decides whether a given call runs on this device or on a peer. That single seam is what makes delegation invisible to the rest of the code. The web interface adds a thin localhost bridge (`packages/server`) that wraps the same engine and streams its events to the browser (`packages/web`); the browser runs no model and makes no network calls beyond localhost.
 
 Delegation rides on QVAC's peer-to-peer stack (Holepunch/Hyperswarm). A device that wants to host a model runs `serve`; a device that wants to borrow it adds `--delegate`. Before sending work, the consumer sends a liveness probe; if the peer doesn't answer, or goes quiet partway through streaming an answer, the engine cancels the remote request and re-runs locally on a smaller model. When several peers are available, it tries them in a stated order of preference and falls through to local only if none respond.
 
