@@ -27,6 +27,13 @@ It is built for triage support and first-aid education, not diagnosis. See [Safe
 - Treats anything it reads from a document, an image, or a peer as untrusted data. A "ignore your instructions" line hidden in a scanned label is quoted, never obeyed.
 - Writes a structured log of every run (timings, which device served it, what was retrieved, what safety checks fired) so a run can be audited after the fact.
 
+## For reviewers
+
+- **The canonical demo flow** — one reproducible run with every step mapped to its evidence: [`docs/demo.md`](./docs/demo.md). It also documents the no-hardware path (`npm test` + `npm run ui`, offline) and what to pre-warm.
+- **The evidence** — real, committed sample logs (grounded answer, delegated inference, peer-drop fallback, ungrounded refusal, blocked injection, vision, voice, model comparison): [`examples/logs/`](./examples/logs).
+- **What's genuinely novel** — the live mesh visualizer; delegated MedPsy inference with automatic fallback to local on a peer drop (`served_by` flips remote→local, logged); and the honesty layer (refuse-below-threshold, untrusted-text fencing, per-run audit logs).
+- **Remote calls** — every network dependency is disclosed in [`remote-apis.yaml`](./remote-apis.yaml): peer discovery (DHT) and one-time model fetch only; no cloud AI, ever.
+
 ## Quick look
 
 A grounded answer with its sources and the standing disclaimer:
