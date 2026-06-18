@@ -20,6 +20,7 @@ import { runTurn } from "./orchestrator";
 import { stopProvider } from "./providerService";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import { tracked } from "./serialize";
+import { runTool } from "./toolRunner";
 import { cleanupUploads } from "./uploads";
 import { VoiceSession } from "./voice";
 
@@ -78,6 +79,20 @@ wss.on("connection", (ws) => {
       case "cancel":
         turns.get(msg.turnId)?.abort();
         break;
+      case "tool_cancel":
+        turns.get(msg.runId)?.abort();
+        break;
+      case "tool_run": {
+        const run = msg.run;
+        const controller = new AbortController();
+        turns.set(run.runId, controller);
+        send(ws, { type: "tool_accepted", runId: run.runId });
+        // Serialize against turns/probes; stream the capability's events as they happen.
+        tracked(() => runTool(run, (ev) => send(ws, ev), controller.signal))
+          .catch((err) => send(ws, { type: "tool_error", runId: run.runId, message: err instanceof Error ? err.message : String(err) }))
+          .finally(() => turns.delete(run.runId));
+        break;
+      }
       case "voice_start":
         void voice.start(msg.options ?? {});
         break;

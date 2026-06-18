@@ -10,9 +10,10 @@
  */
 import type { ComponentType } from "react";
 
-import { MessagesSquare, Radio } from "lucide-react";
+import { MessagesSquare, Radio, ScanText } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
+import { OcrTool } from "../components/tools/OcrTool";
 import { NetworkTool } from "../components/workspace/NetworkTool";
 
 export type ToolGroupId = "converse" | "see" | "read" | "listen" | "knowledge" | "adapt" | "network";
@@ -51,6 +52,14 @@ export const TOOLS: ToolDef[] = [
     icon: MessagesSquare,
     Component: Conversation,
     bleed: true,
+  },
+  {
+    id: "ocr",
+    group: "read",
+    label: "Read text",
+    blurb: "Photograph a label or note — read the printed text on-device",
+    icon: ScanText,
+    Component: OcrTool,
   },
   {
     id: "network",

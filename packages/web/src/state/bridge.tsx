@@ -22,6 +22,9 @@ import type {
   MeshSnapshot,
   ServerEvent,
   ServerSettings,
+  ToolEvent,
+  ToolId,
+  ToolUpload,
   TurnOptions,
   TurnRequest,
 } from "../lib/protocol";
@@ -181,6 +184,11 @@ function mergeStage(stages: import("./types").StageEntry[], ev: Extract<ServerEv
 interface BridgeContextValue extends BridgeState {
   sendTurn(input: { prompt: string; attachments?: TurnRequest["attachments"]; userAttachments: UserMsg["attachments"]; options: UserMsg["options"] }): void;
   cancel(turnId: string): void;
+  /** Run a standalone capability; events stream to `onEvent`. Returns a cancel handle. */
+  runTool(
+    req: { tool: ToolId; uploads?: ToolUpload[]; params?: Record<string, unknown>; options?: TurnOptions },
+    onEvent: (ev: ToolEvent) => void,
+  ): { runId: string; cancel: () => void };
   applySettings(settings: ServerSettings): void;
   refreshMesh(): Promise<void>;
   startVoice(options: TurnOptions): Promise<void>;
@@ -202,6 +210,9 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const closedByUs = useRef(false);
   const playerRef = useRef<PcmPlayer | null>(null);
   const micRef = useRef<MicStream | null>(null);
+  // Per-run handlers for tool (capability) events, keyed by runId. Kept off the
+  // conversation reducer so capability tools own their own local state.
+  const toolRunsRef = useRef<Map<string, (ev: ToolEvent) => void>>(new Map());
 
   useEffect(() => {
     closedByUs.current = false;
@@ -230,6 +241,12 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
         }
         if (ev.type === "hello") {
           dispatch({ kind: "hello", ev });
+          return;
+        }
+        // Tool (capability) events route to the run that started them, not the
+        // conversation store.
+        if (ev.type.startsWith("tool_")) {
+          toolRunsRef.current.get((ev as ToolEvent).runId)?.(ev as ToolEvent);
           return;
         }
         // Stop playback promptly on barge-in / session end.
@@ -277,6 +294,25 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
 
   const cancel = useCallback((turnId: string) => send({ type: "cancel", turnId }), [send]);
 
+  const runTool = useCallback<BridgeContextValue["runTool"]>(
+    (req, onEvent) => {
+      const runId = crypto.randomUUID();
+      toolRunsRef.current.set(runId, (ev) => {
+        onEvent(ev);
+        if (ev.type === "tool_done" || ev.type === "tool_error") toolRunsRef.current.delete(runId);
+      });
+      send({ type: "tool_run", run: { ...req, runId } });
+      return {
+        runId,
+        cancel: () => {
+          send({ type: "tool_cancel", runId });
+          toolRunsRef.current.delete(runId);
+        },
+      };
+    },
+    [send],
+  );
+
   const startVoice = useCallback(
     async (options: TurnOptions) => {
       if (micRef.current) return;
@@ -314,8 +350,8 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const busy = state.exchanges.some((ex) => ex.assistant.status === "pending" || ex.assistant.status === "streaming");
 
   const value = useMemo<BridgeContextValue>(
-    () => ({ ...state, sendTurn, cancel, applySettings, refreshMesh, startVoice, stopVoice, busy }),
-    [state, sendTurn, cancel, applySettings, refreshMesh, startVoice, stopVoice, busy],
+    () => ({ ...state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, busy }),
+    [state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, busy],
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;

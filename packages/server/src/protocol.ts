@@ -45,9 +45,58 @@ export interface TurnRequest {
   options?: TurnOptions;
 }
 
+// --- generic capability ("tool") runs ---------------------------------------
+// Standalone capabilities the medic invokes on their own (read a label, …),
+// separate from a conversation turn. One run streams: tool_accepted → stage(s)
+// → telemetry → done | error. Binary uploads still go over POST /api/upload.
+
+/** Tools the workspace can invoke directly. Grows as capabilities are homed. */
+export type ToolId = "ocr";
+
+export interface ToolUpload {
+  /** Role this upload plays for the tool (e.g. "image"). */
+  role: string;
+  /** Upload id from POST /api/upload. */
+  id: string;
+  name?: string;
+}
+
+export interface ToolRunRequest {
+  runId: string;
+  tool: ToolId;
+  uploads?: ToolUpload[];
+  /** Free-form tool parameters (text input, options). */
+  params?: Record<string, unknown>;
+  options?: TurnOptions;
+}
+
+/** One labelled value in a tool's mono telemetry strip. */
+export interface ToolMetric {
+  label: string;
+  value: string;
+  hint?: string;
+}
+
+export interface ToolTelemetry {
+  servedBy?: "local" | "remote";
+  backend?: string;
+  metrics: ToolMetric[];
+}
+
+/** Tool result payloads, discriminated by `tool`. */
+export type ToolOutput = {
+  tool: "ocr";
+  text: string;
+  blocks: { text: string; confidence?: number }[];
+  /** Set when the recognised text contained instruction-like patterns (treated as data, never executed). */
+  injection?: { detected: boolean; patterns: string[] };
+};
+
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
   | { type: "cancel"; turnId: string }
+  | { type: "tool_run"; run: ToolRunRequest }
+  | { type: "tool_cancel"; runId: string }
   | { type: "voice_start"; options?: TurnOptions }
   | { type: "voice_stop" };
 
@@ -194,6 +243,12 @@ export type ServerEvent =
   | { type: "refusal"; turnId: string; text: string; disclaimer: string }
   | { type: "done"; turnId: string; answer: string; disclaimer: string; evidence: string }
   | { type: "error"; turnId: string; message: string }
+  // --- capability ("tool") runs ---
+  | { type: "tool_accepted"; runId: string }
+  | { type: "tool_stage"; runId: string; stage: string; status: "start" | "done"; detail?: string; ms?: number; progress?: number }
+  | { type: "tool_telemetry"; runId: string; telemetry: ToolTelemetry }
+  | { type: "tool_done"; runId: string; output: ToolOutput; evidence: string }
+  | { type: "tool_error"; runId: string; message: string }
   // --- live voice (binary frames carry PCM: mic in, TTS out) ---
   | { type: "voice_state"; state: VoiceState; mode: "live" | "turn-based"; detail?: string }
   | { type: "voice_level"; speaking: boolean; level: number }

@@ -29,9 +29,47 @@ export interface TurnRequest {
   options?: TurnOptions;
 }
 
+// --- generic capability ("tool") runs ---
+export type ToolId = "ocr";
+
+export interface ToolUpload {
+  role: string;
+  id: string;
+  name?: string;
+}
+
+export interface ToolRunRequest {
+  runId: string;
+  tool: ToolId;
+  uploads?: ToolUpload[];
+  params?: Record<string, unknown>;
+  options?: TurnOptions;
+}
+
+export interface ToolMetric {
+  label: string;
+  value: string;
+  hint?: string;
+}
+
+export interface ToolTelemetry {
+  servedBy?: "local" | "remote";
+  backend?: string;
+  metrics: ToolMetric[];
+}
+
+export type ToolOutput = {
+  tool: "ocr";
+  text: string;
+  blocks: { text: string; confidence?: number }[];
+  injection?: { detected: boolean; patterns: string[] };
+};
+
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
   | { type: "cancel"; turnId: string }
+  | { type: "tool_run"; run: ToolRunRequest }
+  | { type: "tool_cancel"; runId: string }
   | { type: "voice_start"; options?: TurnOptions }
   | { type: "voice_stop" };
 
@@ -165,11 +203,22 @@ export type ServerEvent =
   | { type: "refusal"; turnId: string; text: string; disclaimer: string }
   | { type: "done"; turnId: string; answer: string; disclaimer: string; evidence: string }
   | { type: "error"; turnId: string; message: string }
+  | { type: "tool_accepted"; runId: string }
+  | { type: "tool_stage"; runId: string; stage: string; status: "start" | "done"; detail?: string; ms?: number; progress?: number }
+  | { type: "tool_telemetry"; runId: string; telemetry: ToolTelemetry }
+  | { type: "tool_done"; runId: string; output: ToolOutput; evidence: string }
+  | { type: "tool_error"; runId: string; message: string }
   | { type: "voice_state"; state: VoiceState; mode: "live" | "turn-based"; detail?: string }
   | { type: "voice_level"; speaking: boolean; level: number }
   | { type: "voice_user"; turnId: string; text: string }
   | { type: "voice_tts"; turnId: string; status: "start" | "end"; sampleRate?: number; bargedIn?: boolean }
   | { type: "voice_error"; message: string };
+
+/** The subset of ServerEvents that belong to a tool run (routed by runId). */
+export type ToolEvent = Extract<
+  ServerEvent,
+  { type: "tool_accepted" | "tool_stage" | "tool_telemetry" | "tool_done" | "tool_error" }
+>;
 
 export const MODEL_NOTES: Record<ModelKey, string> = {
   medgemma4b: "Medical · direct answers · fast",
