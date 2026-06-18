@@ -52,35 +52,42 @@ export function Select({
   options,
   ariaLabel,
   className,
+  align = "start",
+  side,
 }: {
   value: string;
   onValueChange: (v: string) => void;
   options: SelectOption[];
   ariaLabel: string;
   className?: string;
+  align?: "start" | "center" | "end";
+  side?: "top" | "bottom";
 }) {
   return (
     <RSelect.Root value={value} onValueChange={onValueChange}>
       <RSelect.Trigger
         aria-label={ariaLabel}
         className={cn(
-          "inline-flex h-9 items-center justify-between gap-2 rounded-lg border border-hairline bg-surface px-3 text-sm text-fg",
+          "inline-flex h-9 min-w-0 items-center justify-between gap-2 rounded-lg border border-hairline bg-surface px-3 text-sm text-fg",
           "hover:border-hairline-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 data-[placeholder]:text-fg-muted",
           className,
         )}
       >
-        <RSelect.Value />
-        <RSelect.Icon>
+        <RSelect.Value className="min-w-0 flex-1 truncate text-left" />
+        <RSelect.Icon className="shrink-0">
           <ChevronDown className="h-4 w-4 text-fg-muted" />
         </RSelect.Icon>
       </RSelect.Trigger>
       <RSelect.Portal>
         <RSelect.Content
           position="popper"
+          side={side}
+          align={align}
           sideOffset={6}
-          className="z-50 overflow-hidden rounded-xl border border-hairline-strong bg-raised shadow-pop data-[state=open]:animate-fade-up"
+          collisionPadding={12}
+          className="z-50 max-h-[min(60vh,22rem)] w-max min-w-[14rem] max-w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-hairline-strong bg-raised shadow-pop data-[state=open]:animate-fade-up"
         >
-          <RSelect.Viewport className="p-1">
+          <RSelect.Viewport className="max-h-[inherit] overflow-y-auto p-1">
             {options.map((o) => (
               <RSelect.Item
                 key={o.value}
@@ -91,7 +98,7 @@ export function Select({
                   <Check className="h-4 w-4" />
                 </RSelect.ItemIndicator>
                 <span className="min-w-0">
-                  <RSelect.ItemText>{o.label}</RSelect.ItemText>
+                  <RSelect.ItemText className="whitespace-nowrap">{o.label}</RSelect.ItemText>
                   {o.hint && <span className="mt-0.5 block text-xs text-fg-muted">{o.hint}</span>}
                 </span>
               </RSelect.Item>

@@ -198,6 +198,7 @@ export function Composer() {
                 onValueChange={(v) => setLang(v as Lang)}
                 options={LANGS}
                 className="h-8"
+                side="top"
               />
 
               <Toggle active={grounded} onClick={() => setGrounded((g) => !g)} icon={BookOpen} label="Ground in the field manual" />
@@ -210,7 +211,9 @@ export function Composer() {
                   value={model}
                   onValueChange={(v) => setModel(v as ModelKey)}
                   options={models.map((m) => ({ value: m.key, label: m.label }))}
-                  className="h-8 max-w-[12rem]"
+                  className="h-8 w-[12.5rem]"
+                  align="center"
+                  side="top"
                 />
                 {busy && activeTurn ? (
                   <button onClick={() => cancel(activeTurn.id)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 text-sm text-fg-muted hover:text-fg">
