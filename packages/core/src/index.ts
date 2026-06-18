@@ -61,6 +61,9 @@ export type { OcrResult, OcrOptions, OcrBlock } from "./ocr";
 export { classifyImage, matchLabel, labelSetById, SCREEN_LABEL_SETS } from "./classify";
 export type { ClassifyResult, ClassLabel, LabelSet } from "./classify";
 
+export { generateIllustration } from "./imagegen";
+export type { IllustrationResult, IllustrationOptions } from "./imagegen";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,

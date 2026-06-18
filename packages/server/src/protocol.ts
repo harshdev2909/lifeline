@@ -60,7 +60,8 @@ export type ToolId =
   | "vision"
   | "soap"
   | "corpus"
-  | "classify";
+  | "classify"
+  | "illustrate";
 
 export interface ToolUpload {
   /** Role this upload plays for the tool (e.g. "image"). */
@@ -119,7 +120,8 @@ export type ToolOutput =
   | { tool: "vision"; findings: string; injection?: InjectionFlag }
   | { tool: "soap"; text: string }
   | { tool: "corpus"; workspace: string; docCount: number; chunkCount: number; embedModel: string; chunks: CorpusChunk[] }
-  | { tool: "classify"; mode: "triage" | "screen"; results: { label: string; confidence?: number }[]; reason?: string; note?: string };
+  | { tool: "classify"; mode: "triage" | "screen"; results: { label: string; confidence?: number }[]; reason?: string; note?: string }
+  | { tool: "illustrate"; dataUrl: string; width: number; height: number; steps: number; seed?: number; prompt: string };
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }

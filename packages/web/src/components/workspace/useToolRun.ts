@@ -22,6 +22,7 @@ export function useToolRun() {
   const { runTool, status } = useBridge();
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [stage, setStage] = useState("");
+  const [progress, setProgress] = useState<number | undefined>(undefined);
   const [stream, setStream] = useState("");
   const [output, setOutput] = useState<ToolOutput | null>(null);
   const [telemetry, setTelemetry] = useState<ToolTelemetry | undefined>(undefined);
@@ -33,6 +34,7 @@ export function useToolRun() {
     (req: ToolRunReq) => {
       setPhase("running");
       setStage("");
+      setProgress(undefined);
       setStream("");
       setOutput(null);
       setTelemetry(undefined);
@@ -42,6 +44,7 @@ export function useToolRun() {
         switch (ev.type) {
           case "tool_stage":
             setStage(ev.status === "done" ? "" : ev.detail ?? "Working…");
+            if (ev.progress != null) setProgress(ev.progress);
             break;
           case "tool_token":
             setStream((s) => s + ev.delta);
@@ -69,6 +72,7 @@ export function useToolRun() {
     handle.current = null;
     setPhase("idle");
     setStage("");
+    setProgress(undefined);
     setStream("");
     setOutput(null);
     setTelemetry(undefined);
@@ -76,5 +80,5 @@ export function useToolRun() {
     setError(undefined);
   }, []);
 
-  return { phase, stage, stream, output, telemetry, evidence, error, run, reset, ready: status === "open" };
+  return { phase, stage, progress, stream, output, telemetry, evidence, error, run, reset, ready: status === "open" };
 }

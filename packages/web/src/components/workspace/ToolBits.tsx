@@ -20,6 +20,20 @@ export function RunningBar({ label }: { label: string }) {
   );
 }
 
+/** A labelled progress bar for staged/long tools (image generation, training). */
+export function ProgressBar({ value, label }: { value?: number; label: string }) {
+  return (
+    <div className="space-y-1.5 rounded-xl border border-hairline bg-surface px-4 py-3">
+      <div className="flex items-center gap-2 text-sm text-fg-muted">
+        <Loader2 className="h-4 w-4 animate-spin text-accent" aria-hidden /> {label}
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-raised">
+        <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round((value ?? 0) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export function ErrorBar({ message }: { message: string }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-emergency-line bg-emergency-soft px-3 py-2 text-sm text-emergency">

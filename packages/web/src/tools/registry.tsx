@@ -10,11 +10,12 @@
  */
 import type { ComponentType } from "react";
 
-import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
+import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { ClassifyTool } from "../components/tools/ClassifyTool";
 import { CorpusTool } from "../components/tools/CorpusTool";
+import { IllustrateTool } from "../components/tools/IllustrateTool";
 import { DictateTool } from "../components/tools/DictateTool";
 import { OcrTool } from "../components/tools/OcrTool";
 import { SearchTool } from "../components/tools/SearchTool";
@@ -84,6 +85,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Capture-triage a document, or screen an image against a fixed label set",
     icon: ScanSearch,
     Component: ClassifyTool,
+  },
+  {
+    id: "illustrate",
+    group: "see",
+    label: "Illustrate",
+    blurb: "Generate a simple instructional first-aid diagram — a teaching aid, on-device",
+    icon: Sparkles,
+    Component: IllustrateTool,
   },
   {
     id: "ocr",

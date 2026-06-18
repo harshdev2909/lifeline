@@ -211,6 +211,17 @@ export interface ClassifyEvent {
   labels: Array<{ label: string; confidence?: number }>;
   classify_ms: number;
 }
+export interface ImageGenEvent {
+  type: "image_gen";
+  ts: string;
+  model: string;
+  prompt: string;
+  width: number;
+  height: number;
+  steps: number;
+  seed?: number;
+  generation_ms: number;
+}
 export interface VisionEvent {
   type: "vision";
   ts: string;
@@ -297,6 +308,7 @@ export type EvidenceEvent =
   | SttEvent  | TranslationEvent
   | OcrEvent
   | ClassifyEvent
+  | ImageGenEvent
   | VisionEvent
   | TtsEvent
   | MedbenchEvent;
@@ -425,6 +437,10 @@ export class RunLogger {
 
   classify(args: Omit<ClassifyEvent, "type" | "ts">): void {
     this.write({ type: "classify", ts: new Date().toISOString(), ...args });
+  }
+
+  imageGen(args: Omit<ImageGenEvent, "type" | "ts">): void {
+    this.write({ type: "image_gen", ts: new Date().toISOString(), ...args });
   }
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {

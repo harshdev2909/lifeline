@@ -18,6 +18,7 @@ import {
   createEngine,
   detectInjection,
   extractText,
+  generateIllustration,
   KnowledgeBase,
   labelSetById,
   matchLabel,
@@ -63,6 +64,8 @@ export async function runTool(req: ToolRunRequest, emit: Emit, signal: AbortSign
       return runCorpus(req, emit);
     case "classify":
       return runClassify(req, emit, signal);
+    case "illustrate":
+      return runIllustrate(req, emit, signal);
     default:
       throw new Error(`Unknown tool: ${String((req as { tool: string }).tool)}`);
   }
@@ -482,6 +485,56 @@ async function runClassify(req: ToolRunRequest, emit: Emit, signal: AbortSignal)
     output: { tool: "classify", mode: "screen", results: [{ label: matched }], reason, note: "Screening support, not a diagnosis — confirm with the manual or a clinician." },
     evidence: logger.path,
   });
+}
+
+/**
+ * Generate an instructional first-aid illustration on-device (Stable Diffusion).
+ * Framed and prompted as a non-graphic instructional diagram — never diagnostic
+ * imagery. The SD weights load on use and unload right after (memory discipline).
+ */
+async function runIllustrate(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Promise<void> {
+  const runId = req.runId;
+  const subject = str(req, "prompt").trim();
+  if (!subject) throw new Error("Describe the first-aid step to illustrate.");
+  const steps = num(req, "steps") ?? 20;
+
+  const logger = new RunLogger();
+  logger.session("ui (illustrate tool)", collectSysInfo());
+  emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: "Loading Stable Diffusion…" });
+
+  const prompt = `simple instructional first-aid illustration, clean flat vector line art, neutral palette, clear step-by-step diagram, no text labels: ${subject}`;
+  let genStarted = false;
+  const r = await generateIllustration(prompt, {
+    steps,
+    onProgress: (p) => emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: p.phase, progress: p.progress }),
+    onStep: (step, total) => {
+      if (!genStarted) {
+        genStarted = true;
+        emit({ type: "tool_stage", runId, stage: "load", status: "done" });
+      }
+      emit({ type: "tool_stage", runId, stage: "generate", status: "start", detail: `step ${step}/${total}`, progress: total ? step / total : undefined });
+    },
+  });
+  if (signal.aborted) return;
+
+  logger.imageGen({ model: r.model, prompt: subject, width: r.width, height: r.height, steps: r.steps, seed: r.seed, generation_ms: r.generation_ms });
+  emit({ type: "tool_stage", runId, stage: "generate", status: "done", ms: r.generation_ms });
+  const dataUrl = `data:image/png;base64,${Buffer.from(r.png).toString("base64")}`;
+  emit({
+    type: "tool_telemetry",
+    runId,
+    telemetry: {
+      servedBy: "local",
+      metrics: [
+        { label: "model", value: "SD v2.1", hint: r.model },
+        { label: "size", value: `${r.width}×${r.height}` },
+        { label: "steps", value: String(r.steps) },
+        { label: "gen", value: `${(r.generation_ms / 1000).toFixed(1)}s`, hint: "On-device generation time (measured)." },
+        ...(r.seed != null ? [{ label: "seed", value: String(r.seed) }] : []),
+      ],
+    },
+  });
+  emit({ type: "tool_done", runId, output: { tool: "illustrate", dataUrl, width: r.width, height: r.height, steps: r.steps, seed: r.seed, prompt: subject }, evidence: logger.path });
 }
 
 /** Corpus manager — ingest the manual and show its chunks/sources. */

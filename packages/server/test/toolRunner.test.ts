@@ -54,3 +54,7 @@ test("vision needs an image and the note tool needs notes", async () => {
 test("the screening aid needs an image", async () => {
   await assert.rejects(() => runTool({ runId: "c1", tool: "classify", uploads: [] }, noEmit, signal()), /Attach a photo/);
 });
+
+test("the illustration tool needs a prompt", async () => {
+  await assert.rejects(() => runTool({ runId: "i1", tool: "illustrate", params: { prompt: "" } }, noEmit, signal()), /Describe the first-aid step/);
+});
