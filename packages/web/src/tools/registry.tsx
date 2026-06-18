@@ -10,7 +10,7 @@
  */
 import type { ComponentType } from "react";
 
-import { ClipboardList, Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
+import { ClipboardList, Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, RadioTower, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { AdaptTool } from "../components/tools/AdaptTool";
@@ -26,6 +26,7 @@ import { SoapTool } from "../components/tools/SoapTool";
 import { SpeakTool } from "../components/tools/SpeakTool";
 import { TranslateTool } from "../components/tools/TranslateTool";
 import { VisionTool } from "../components/tools/VisionTool";
+import { ResponderTool } from "../components/tools/ResponderTool";
 import { NetworkTool } from "../components/workspace/NetworkTool";
 
 export type ToolGroupId = "converse" | "see" | "read" | "listen" | "knowledge" | "records" | "adapt" | "network";
@@ -178,6 +179,14 @@ export const TOOLS: ToolDef[] = [
     icon: Radio,
     Component: NetworkTool,
     bleed: true,
+  },
+  {
+    id: "responder",
+    group: "network",
+    label: "Responder",
+    blurb: "Auto-answer triage questions from the mesh — grounded, cited, unattended",
+    icon: RadioTower,
+    Component: ResponderTool,
   },
 ];
 

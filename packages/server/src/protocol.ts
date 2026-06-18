@@ -140,11 +140,46 @@ export type ToolOutput =
     }
   | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string };
 
+// --- unattended responder mode ----------------------------------------------
+export type ResponderMode = "allowlist" | "open";
+
+export interface ResponderState {
+  on: boolean;
+  /** allowlist = only configured peers may ask; open = anyone may. */
+  mode: ResponderMode;
+  served: number;
+  lastAt?: string;
+}
+
+/** One question-in / answer-out line in the operator feed. */
+export interface ResponderFeedEntry {
+  id: string;
+  at: string;
+  from: string;
+  question: string;
+  answer: string;
+  citations: SourceChip[];
+  redFlag: boolean;
+  redFlagTerms: string[];
+  servedBy: "local" | "remote";
+  model: string;
+  lang: string;
+  evidence?: string;
+  ms: number;
+  ttftMs?: number;
+  tps?: number;
+  /** false when the firewall rejected the asker (with `reason`). */
+  allowed: boolean;
+  reason?: string;
+}
+
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
   | { type: "cancel"; turnId: string }
   | { type: "tool_run"; run: ToolRunRequest }
   | { type: "tool_cancel"; runId: string }
+  | { type: "responder_set"; on: boolean; mode: ResponderMode }
+  | { type: "responder_ask"; turnId: string; question: string; from?: string; lang?: Lang; delegate?: boolean }
   | { type: "voice_start"; options?: TurnOptions }
   | { type: "voice_stop" };
 
@@ -304,6 +339,9 @@ export type ServerEvent =
   | { type: "tool_telemetry"; runId: string; telemetry: ToolTelemetry }
   | { type: "tool_done"; runId: string; output: ToolOutput; evidence: string }
   | { type: "tool_error"; runId: string; message: string }
+  // --- unattended responder ---
+  | { type: "responder_state"; state: ResponderState; feed: ResponderFeedEntry[] }
+  | { type: "responder_feed"; entry: ResponderFeedEntry }
   // --- live voice (binary frames carry PCM: mic in, TTS out) ---
   | { type: "voice_state"; state: VoiceState; mode: "live" | "turn-based"; detail?: string }
   | { type: "voice_level"; speaking: boolean; level: number }

@@ -18,6 +18,7 @@ import { createHttpHandler, deviceInfo } from "./http";
 import { buildMeshSnapshot } from "./meshService";
 import { runTurn } from "./orchestrator";
 import { stopProvider } from "./providerService";
+import { responderAsk, setResponder, subscribeResponder } from "./responderService";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import { tracked } from "./serialize";
 import { runTool } from "./toolRunner";
@@ -66,6 +67,9 @@ wss.on("connection", (ws) => {
     },
   );
 
+  // Stream responder state + operator feed to this connection (sends a snapshot now).
+  const unsubResponder = subscribeResponder((ev) => send(ws, ev));
+
   // Attach listeners synchronously FIRST — the client sends `start` as soon as
   // the socket opens, and any await here would drop that message.
   ws.on("message", (raw, isBinary) => {
@@ -100,6 +104,20 @@ wss.on("connection", (ws) => {
           .finally(() => turns.delete(run.runId));
         break;
       }
+      case "responder_set":
+        setResponder(msg.on, msg.mode);
+        break;
+      case "responder_ask": {
+        // responderAsk takes the shared lock internally for the inference; don't
+        // double-wrap it here or the inner lock would deadlock behind the outer.
+        const controller = new AbortController();
+        turns.set(msg.turnId, controller);
+        send(ws, { type: "turn_accepted", turnId: msg.turnId });
+        responderAsk(msg, (ev) => send(ws, ev), controller)
+          .catch((err) => send(ws, { type: "error", turnId: msg.turnId, message: err instanceof Error ? err.message : String(err) }))
+          .finally(() => turns.delete(msg.turnId));
+        break;
+      }
       case "voice_start":
         void voice.start(msg.options ?? {});
         break;
@@ -123,6 +141,7 @@ wss.on("connection", (ws) => {
   ws.on("close", () => {
     for (const c of turns.values()) c.abort();
     turns.clear();
+    unsubResponder();
     void voice.stop();
   });
 

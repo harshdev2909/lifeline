@@ -2,6 +2,8 @@
 import type {
   Lang,
   PeerProbeWire,
+  ResponderFeedEntry,
+  ResponderState,
   ServerSettings,
   SourceChip,
   TurnAttachment,
@@ -99,4 +101,6 @@ export interface BridgeState {
   meshPulse: number;
   lastDelegation?: { turnId: string; servedBy: "local" | "remote"; peerKey?: string; fallback?: boolean };
   voice: VoiceUi;
+  /** Unattended responder mode: operator state + live question/answer feed. */
+  responder: { state: ResponderState; feed: ResponderFeedEntry[] };
 }

@@ -19,7 +19,9 @@ import {
 import { probeMesh as apiProbeMesh } from "../lib/api";
 import type {
   ClientMessage,
+  Lang,
   MeshSnapshot,
+  ResponderMode,
   ServerEvent,
   ServerSettings,
   ToolEvent,
@@ -54,6 +56,7 @@ const initial: BridgeState = {
   exchanges: [],
   meshPulse: 0,
   voice: { active: false, state: "idle", level: 0, speaking: false, mode: "live" },
+  responder: { state: { on: false, mode: "allowlist", served: 0 }, feed: [] },
 };
 
 function patchAssistant(state: BridgeState, turnId: string, fn: (a: AssistantMsg) => AssistantMsg): BridgeState {
@@ -149,6 +152,12 @@ function applyEvent(state: BridgeState, ev: ServerEvent): BridgeState {
       }));
     case "error":
       return patchAssistant(state, ev.turnId, (a) => ({ ...a, status: "error", error: ev.message, thinkingActive: false }));
+    case "responder_state":
+      return { ...state, responder: { state: ev.state, feed: ev.feed } };
+    case "responder_feed": {
+      const rest = state.responder.feed.filter((e) => e.id !== ev.entry.id);
+      return { ...state, responder: { ...state.responder, feed: [ev.entry, ...rest].slice(0, 30) } };
+    }
     case "voice_state":
       return { ...state, voice: { ...state.voice, state: ev.state, mode: ev.mode } };
     case "voice_level":
@@ -193,6 +202,10 @@ interface BridgeContextValue extends BridgeState {
   refreshMesh(): Promise<void>;
   startVoice(options: TurnOptions): Promise<void>;
   stopVoice(): void;
+  /** Unattended responder: toggle on/off + allowlist vs open. */
+  setResponder(on: boolean, mode: ResponderMode): void;
+  /** Submit a question to this node's responder (the field/peer side). Returns the turn id. */
+  askResponder(input: { question: string; from?: string; lang?: Lang; delegate?: boolean }): string;
   busy: boolean;
 }
 
@@ -341,6 +354,17 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
     dispatch({ kind: "voice-active", active: false });
   }, [send]);
 
+  const setResponder = useCallback<BridgeContextValue["setResponder"]>((on, mode) => send({ type: "responder_set", on, mode }), [send]);
+
+  const askResponder = useCallback<BridgeContextValue["askResponder"]>(
+    (input) => {
+      const turnId = crypto.randomUUID();
+      send({ type: "responder_ask", turnId, question: input.question, from: input.from, lang: input.lang, delegate: input.delegate });
+      return turnId;
+    },
+    [send],
+  );
+
   const applySettings = useCallback((settings: ServerSettings) => dispatch({ kind: "settings", settings }), []);
   const refreshMesh = useCallback(async () => {
     const mesh = await apiProbeMesh();
@@ -350,8 +374,8 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const busy = state.exchanges.some((ex) => ex.assistant.status === "pending" || ex.assistant.status === "streaming");
 
   const value = useMemo<BridgeContextValue>(
-    () => ({ ...state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, busy }),
-    [state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, busy],
+    () => ({ ...state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, setResponder, askResponder, busy }),
+    [state, sendTurn, cancel, runTool, applySettings, refreshMesh, startVoice, stopVoice, setResponder, askResponder, busy],
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;
