@@ -58,13 +58,20 @@ export function VideoTool() {
             className="rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-sm text-fg focus-visible:outline focus-visible:outline-2"
             aria-label="Clip length"
           >
-            <option value={17}>~1s (17 frames, fastest)</option>
-            <option value={33}>~2s (33 frames)</option>
+            <option value={17}>~1s · 17 frames (fastest)</option>
+            <option value={33}>~2s · 33 frames</option>
+            <option value={49}>~3s · 49 frames</option>
+            <option value={65}>~4s · 65 frames</option>
+            <option value={81}>~5s · 81 frames (best motion, slowest)</option>
           </select>
           <Button variant="primary" onClick={() => run({ tool: "video", params: { prompt, frames } })} loading={phase === "running"} disabled={!prompt.trim() || !ready}>
             <Clapperboard className="h-4 w-4" aria-hidden /> {phase === "done" ? "Generate again" : "Generate clip"}
           </Button>
         </div>
+        <p className="text-2xs text-fg-faint">
+          Generation time scales with length — roughly a few minutes per second of video on laptop-class hardware. 81 frames is Wan
+          1.3B's native length (best motion); going longer would exceed the model and degrade quality.
+        </p>
 
         {phase === "running" && <ProgressBar value={progress} label={stage || "Generating on-device (this takes minutes)…"} />}
         {phase === "error" && error && <ErrorBar message={error} />}
