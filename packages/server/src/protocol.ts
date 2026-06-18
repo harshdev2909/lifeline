@@ -234,6 +234,8 @@ export interface MeshSnapshot {
   peers: MeshPeer[];
   /** Whether the host has internet (DHT discovery); offline still serves locally. */
   internet: boolean;
+  /** Configured blind-relay keys — relay-assist for delegated links across strict NAT/firewalls. */
+  relays: { count: number; keys: string[] };
   /** The most recent routing decision, for the explainable readout. */
   lastDecision?: RouteDecision;
 }
@@ -247,6 +249,8 @@ export interface ServerSettings {
   corpusLabel: string;
   /** Mesh peers as "[label@]topic-or-key", preference-ordered. */
   peers: { label: string; ref: string; key: string; role?: string; model?: string }[];
+  /** Blind-relay public keys (64-hex). Applied to the SDK config on bridge start. */
+  relays: string[];
 }
 
 export type ServerEvent =

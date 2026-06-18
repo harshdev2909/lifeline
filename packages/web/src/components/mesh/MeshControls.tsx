@@ -142,6 +142,28 @@ export function MeshControls() {
         </div>
       </Section>
 
+      {/* Blind relays — relay-assist for delegated links across strict NAT/firewalls. */}
+      <Section icon={Radio} title={`Relays (${mesh.relays.count})`}>
+        {mesh.relays.count > 0 ? (
+          <>
+            <ul className="space-y-0.5 font-mono text-2xs text-fg-muted">
+              {mesh.relays.keys.map((k) => (
+                <li key={k} className="truncate">
+                  {shortKey(k)}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-2xs text-fg-faint">
+              When a direct peer link can't punch through NAT/firewall, the delegated connection routes through a blind relay. Relay + discovery only — prompts and weights stay end-to-end encrypted.
+            </p>
+          </>
+        ) : (
+          <p className="text-2xs text-fg-faint">
+            None configured — delegated links use direct Holepunch only. Add relay public keys in Settings to traverse strict NAT/firewalls (applied on restart).
+          </p>
+        )}
+      </Section>
+
       {/* Last routing decision — explainable, from real probe results. */}
       {mesh.lastDecision && (
         <Section icon={Wifi} title="Last route">
@@ -164,6 +186,9 @@ export function MeshControls() {
               → {mesh.lastDecision.servedBy === "remote" ? "served by peer" : "served on this device"}
               {mesh.lastDecision.fallbackReason && <span className="text-fg-faint"> · {mesh.lastDecision.fallbackReason}</span>}
             </div>
+            {mesh.lastDecision.servedBy === "remote" && (
+              <div className="mt-1 text-fg-faint">path: peer link · relay-assist {mesh.relays.count > 0 ? "on" : "off"}</div>
+            )}
           </div>
         </Section>
       )}

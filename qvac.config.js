@@ -5,11 +5,22 @@
 // never re-pull the GGUF. Per-role registry corestores live under each role's own
 // SNAP_USER_COMMON home (set by the CLI) so a long-lived provider's corestore lock never
 // collides with a consumer process. Path is computed from this file's location (portable).
+//
+// Blind relays: Hyperswarm relay public keys help establish delegated P2P links across
+// strict NAT/firewalls when a direct Holepunch fails. They're read from
+// LIFELINE_SWARM_RELAYS (comma-separated hex), which the bridge sets from settings before
+// the SDK initializes. Discovery + relaying only — prompts and weights stay E2E-encrypted.
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const swarmRelays = (process.env.LIFELINE_SWARM_RELAYS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 export default {
   cacheDirectory: join(here, ".qvac-home", ".qvac", "models"),
+  ...(swarmRelays.length ? { swarmRelays } : {}),
 };

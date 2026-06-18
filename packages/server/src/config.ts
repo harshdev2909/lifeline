@@ -28,6 +28,12 @@ export function setupQvacEnv(): void {
   if (!process.env.SNAP_USER_COMMON) {
     process.env.SNAP_USER_COMMON = join(REPO_ROOT, ".qvac-home-consumer");
   }
+  // Hand configured blind-relay keys to qvac.config.js (read before the SDK
+  // initializes). Editing relays in Settings therefore takes effect on restart.
+  if (!process.env.LIFELINE_SWARM_RELAYS) {
+    const relays = getSettings().relays;
+    if (relays.length) process.env.LIFELINE_SWARM_RELAYS = relays.join(",");
+  }
 }
 
 /** Human labels for the models the UI can pick (sourced from core's registry). */
@@ -47,6 +53,7 @@ const DEFAULTS: ServerSettings = {
   speak: false,
   corpusLabel: "Field First-Aid Manual (CC0)",
   peers: [],
+  relays: [],
 };
 
 /** Resolve a peer "[label@]topic-or-key" spec into a stored peer with its hex key. */
@@ -76,8 +83,14 @@ function normalize(s: ServerSettings): ServerSettings {
   const peers = (s.peers ?? [])
     .filter((p) => p && typeof p.ref === "string" && p.ref.trim())
     .map((p) => resolvePeerRef(p.ref, p.label, p.role, p.model));
+  const relays = normalizeRelays(s.relays ?? []);
   const defaultModel = isModelKey(s.defaultModel) ? s.defaultModel : DEFAULTS.defaultModel;
-  return { ...DEFAULTS, ...s, defaultModel, peers };
+  return { ...DEFAULTS, ...s, defaultModel, peers, relays };
+}
+
+/** Keep only well-formed 64-hex blind-relay keys (lowercased, deduped). */
+export function normalizeRelays(relays: unknown[]): string[] {
+  return Array.from(new Set((relays ?? []).map((r) => String(r).trim().toLowerCase()).filter((r) => /^[0-9a-f]{64}$/.test(r))));
 }
 
 export function getSettings(): ServerSettings {

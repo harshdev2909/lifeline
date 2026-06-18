@@ -57,6 +57,11 @@ function selfNode(): MeshSnapshot["self"] {
   };
 }
 
+function relaySnapshot(): MeshSnapshot["relays"] {
+  const keys = getSettings().relays ?? [];
+  return { count: keys.length, keys };
+}
+
 function peerNodes(probes?: PeerProbe[]): MeshPeer[] {
   const settings = getSettings();
   const byKey = new Map((probes ?? []).map((p) => [p.peer_key, p]));
@@ -79,19 +84,19 @@ function peerNodes(probes?: PeerProbe[]): MeshPeer[] {
 /** A snapshot without probing (fast; peer status is "unknown"). */
 export async function buildMeshSnapshot(): Promise<MeshSnapshot> {
   const internet = await checkInternet();
-  return { self: selfNode(), peers: peerNodes(), internet, lastDecision: getLastDecision() };
+  return { self: selfNode(), peers: peerNodes(), internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
 }
 
 /** A snapshot with real liveness — heartbeats every configured peer. */
 export async function probeMesh(): Promise<MeshSnapshot> {
   const settings = getSettings();
   const internet = await checkInternet();
-  if (!settings.peers.length) return { self: selfNode(), peers: [], internet, lastDecision: getLastDecision() };
+  if (!settings.peers.length) return { self: selfNode(), peers: [], internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
   try {
     const probes = await probePeers(settings.peers.map((p) => p.key), {
       labels: Object.fromEntries(settings.peers.map((p) => [p.key, p.label])),
     });
-    return { self: selfNode(), peers: peerNodes(probes), internet, lastDecision: getLastDecision() };
+    return { self: selfNode(), peers: peerNodes(probes), internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
   } finally {
     await closeSdkWorker();
   }

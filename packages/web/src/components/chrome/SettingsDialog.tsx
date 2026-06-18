@@ -133,6 +133,20 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </div>
           )}
         </section>
+
+        <section className="space-y-2 border-t border-hairline pt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-faint">Blind relays</h3>
+          <p className="text-2xs text-fg-muted">
+            Hyperswarm relay public keys (one 64-hex key per line). They help a delegated link reach a peer through strict
+            NAT/firewalls — relay and discovery only, never your prompts or weights. Applied on restart.
+          </p>
+          <textarea
+            className="h-24 w-full rounded-lg border border-hairline bg-base px-2.5 py-2 font-mono text-xs text-fg placeholder:text-fg-faint focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+            placeholder="0000000000000000000000000000000000000000000000000000000000000001"
+            value={(draft.relays ?? []).join("\n")}
+            onChange={(e) => set("relays", e.target.value.split(/\s+/).map((s) => s.trim()).filter(Boolean))}
+          />
+        </section>
       </div>
     </Dialog>
   );

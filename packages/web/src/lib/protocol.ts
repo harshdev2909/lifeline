@@ -199,6 +199,7 @@ export interface MeshSnapshot {
   };
   peers: MeshPeer[];
   internet: boolean;
+  relays: { count: number; keys: string[] };
   lastDecision?: RouteDecision;
 }
 
@@ -210,6 +211,7 @@ export interface ServerSettings {
   speak: boolean;
   corpusLabel: string;
   peers: { label: string; ref: string; key: string; role?: string; model?: string }[];
+  relays: string[];
 }
 
 export type ServerEvent =

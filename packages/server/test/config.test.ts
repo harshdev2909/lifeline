@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { topicToProviderKey } from "@lifeline/core";
 
-import { isModelKey, resolvePeerRef } from "../src/config";
+import { isModelKey, normalizeRelays, resolvePeerRef } from "../src/config";
 
 test("resolvePeerRef derives a provider key from a topic, matching core", () => {
   const r = resolvePeerRef("demo", "laptop", "Laptop peer", "MedGemma 4B");
@@ -30,4 +30,10 @@ test("isModelKey accepts known models and rejects others", () => {
   assert.equal(isModelKey("medpsy4b"), true);
   assert.equal(isModelKey("vision"), true);
   assert.equal(isModelKey("gpt"), false);
+});
+
+test("normalizeRelays keeps only 64-hex keys, lowercased and deduped", () => {
+  const good = "a".repeat(64);
+  const out = normalizeRelays([good.toUpperCase(), good, "tooshort", "", "z".repeat(64)]);
+  assert.deepEqual(out, [good]);
 });
