@@ -10,7 +10,7 @@ import { Clapperboard, Download } from "lucide-react";
 
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Field";
-import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar } from "../workspace/ToolBits";
+import { DisclaimerNote, ErrorBar, NoticeBar, OutputCard, ProgressBar } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -33,10 +33,9 @@ export function VideoTool() {
       blurb="Generate a short instructional first-aid motion clip on-device. An illustrative teaching aid only — not real footage or a diagnosis."
     >
       <div className="space-y-3">
-        <div className="flex items-start gap-2 rounded-xl border border-remote-line bg-remote-soft px-4 py-3 text-sm text-remote">
-          <Clapperboard className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>This is heavy: ~14.5 GB of models and several minutes per clip. The first run also downloads the models.</span>
-        </div>
+        <NoticeBar icon={Clapperboard}>
+          This is heavy: ~14.5 GB of models and several minutes per clip. The first run also downloads the models.
+        </NoticeBar>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}

@@ -52,6 +52,20 @@ export function DisclaimerNote({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A neutral notice — information or a caution that is neither an emergency (red)
+ * nor about delegation (amber). Same shape as ErrorBar so severity reads from the
+ * hue alone, keeping the three state colours meaning exactly one thing each.
+ */
+export function NoticeBar({ icon: Icon, children }: { icon?: LucideIcon; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 rounded-lg border border-hairline bg-raised px-3 py-2.5 text-sm text-fg-muted">
+      {Icon && <Icon className="mt-0.5 h-4 w-4 shrink-0 text-fg-faint" aria-hidden />}
+      <span>{children}</span>
+    </div>
+  );
+}
+
 export function OutputCard({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="rounded-xl border border-hairline bg-surface">

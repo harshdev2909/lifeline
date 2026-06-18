@@ -9,12 +9,12 @@
  */
 import { useState } from "react";
 
-import { ScanText, ShieldAlert, X } from "lucide-react";
+import { ScanText, ShieldCheck, X } from "lucide-react";
 
 import type { UploadResult } from "../../lib/api";
 import type { ToolOutput } from "../../lib/protocol";
 import { Button } from "../ui/Button";
-import { ErrorBar, ImagePicker, OutputCard, RunningBar } from "../workspace/ToolBits";
+import { ErrorBar, ImagePicker, NoticeBar, OutputCard, RunningBar } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -83,13 +83,10 @@ function OcrResult({ out }: { out: OcrOut }) {
   return (
     <div className="space-y-3">
       {out.injection?.detected && (
-        <div className="flex items-start gap-2 rounded-lg border border-remote-line bg-remote-soft px-3 py-2 text-sm text-remote">
-          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>
-            This text contained instruction-like patterns ({out.injection.patterns.join(", ")}). It's shown as data only and was
-            not acted on.
-          </span>
-        </div>
+        <NoticeBar icon={ShieldCheck}>
+          This text contained instruction-like patterns ({out.injection.patterns.join(", ")}). It's shown as data only and was not
+          acted on.
+        </NoticeBar>
       )}
       <OutputCard title="Recognised text">
         {out.text ? (

@@ -7,10 +7,10 @@
  */
 import { useState } from "react";
 
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, Info } from "lucide-react";
 
 import { Button } from "../ui/Button";
-import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar, SegmentedControl } from "../workspace/ToolBits";
+import { DisclaimerNote, ErrorBar, NoticeBar, OutputCard, ProgressBar, SegmentedControl } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -26,10 +26,10 @@ export function AdaptTool() {
       blurb="Fine-tune a small LoRA adapter on a built-in first-aid protocol set, run a frozen eval, then see the adapter at inference — the same question answered before and after. A contained, real run on this device."
     >
       <div className="space-y-3">
-        <div className="rounded-xl border border-hairline bg-surface px-4 py-3 text-sm text-fg-muted">
+        <NoticeBar icon={Info}>
           Trains on a built-in set of short, protocol-faithful first-aid examples (Qwen3-0.6B Instruct). Held-out examples drive
           the validation loss — the frozen eval you check before trusting the adapter.
-        </div>
+        </NoticeBar>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-fg-muted">Epochs</span>
           <SegmentedControl

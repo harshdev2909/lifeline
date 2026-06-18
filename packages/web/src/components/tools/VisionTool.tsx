@@ -1,7 +1,7 @@
 /** Image analysis — photo → observed findings (multimodal), grounded and cautious. */
 import { useState } from "react";
 
-import { Eye, X } from "lucide-react";
+import { Eye, ShieldCheck, X } from "lucide-react";
 
 import type { UploadResult } from "../../lib/api";
 import { Button } from "../ui/Button";
@@ -78,7 +78,10 @@ export function VisionTool() {
                 <RunningBar label="Looking at the image on-device…" />
               ))}
             {result?.injection?.detected && (
-              <p className="text-2xs text-remote">Text seen in the image looked like an instruction; it was treated as data, not followed.</p>
+              <p className="flex items-start gap-1.5 text-2xs leading-relaxed text-fg-faint">
+                <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                <span>Text seen in the image looked like an instruction; it was treated as data, not followed.</span>
+              </p>
             )}
             <DisclaimerNote>
               Descriptive support only — not a diagnosis. Confirm against the manual or a clinician before acting.
