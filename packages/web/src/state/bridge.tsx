@@ -105,7 +105,7 @@ function applyEvent(state: BridgeState, ev: ServerEvent): BridgeState {
     case "served_by": {
       const next = patchAssistant(state, ev.turnId, (a) => ({
         ...a,
-        servedBy: { servedBy: ev.servedBy, peerKey: ev.peerKey, transportMs: ev.transportMs, fallback: ev.fallback, reason: ev.reason },
+        servedBy: { servedBy: ev.servedBy, peerKey: ev.peerKey, transportMs: ev.transportMs, warm: ev.warm, fallback: ev.fallback, reason: ev.reason },
       }));
       return { ...next, meshPulse: next.meshPulse + 1, lastDelegation: { turnId: ev.turnId, servedBy: ev.servedBy, peerKey: ev.peerKey, fallback: ev.fallback } };
     }

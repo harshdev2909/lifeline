@@ -34,6 +34,7 @@ export interface ServedBy {
   servedBy: "local" | "remote";
   peerKey?: string;
   transportMs?: number;
+  warm?: boolean;
   fallback?: boolean;
   reason?: string;
 }

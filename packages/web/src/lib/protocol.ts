@@ -128,7 +128,7 @@ export type ServerEvent =
   | { type: "safety"; turnId: string; redFlag: boolean; terms: string[]; grounded: boolean; action: string }
   | { type: "injection"; turnId: string; source: string; detected: boolean; patterns: string[] }
   | { type: "emergency"; turnId: string; notice: string }
-  | { type: "served_by"; turnId: string; servedBy: "local" | "remote"; peerKey?: string; transportMs?: number; fallback?: boolean; reason?: string }
+  | { type: "served_by"; turnId: string; servedBy: "local" | "remote"; peerKey?: string; transportMs?: number; warm?: boolean; fallback?: boolean; reason?: string }
   | { type: "route"; turnId: string; candidates: PeerProbeWire[]; chosen?: string; servedBy: "local" | "remote" }
   | { type: "thinking"; turnId: string; delta: string }
   | { type: "thinking_done"; turnId: string; ms: number; chars: number }

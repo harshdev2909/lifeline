@@ -139,8 +139,9 @@ function modelConfigFor(model: ModelRef): Record<string, unknown> | undefined {
 }
 
 /** Start a QVAC completion. Shared by Local and Delegated engines (same call shape; the
- *  `delegate` is attached at loadModel time, so completion() is identical for both). */
-function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) {
+ *  `delegate` is attached at loadModel time, so completion() is identical for both).
+ *  `kvCache:false` keeps each turn independent so a warm model never accumulates context. */
+function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean, kvCache: boolean | string = false) {
   const history = messages.map((m) => ({
     role: m.role,
     content: m.content,
@@ -148,7 +149,7 @@ function startCompletion(modelId: string, messages: ChatMsg[], stream: boolean) 
   }));
   // captureThinking routes any reasoning to thinkingDelta events so `contentDelta`
   // (what we stream) stays clean even on reasoning models.
-  return completion({ modelId, history, stream, captureThinking: true } as Parameters<typeof completion>[0]);
+  return completion({ modelId, history, stream, captureThinking: true, kvCache } as Parameters<typeof completion>[0]);
 }
 
 interface StreamOut {
@@ -243,6 +244,7 @@ export class LocalEngine implements InferenceEngine {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    kvCache?: boolean | string;
     onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string> {
     return opts.stream === false ? this.completeOnce(opts) : this.completeStream(opts);
@@ -251,9 +253,10 @@ export class LocalEngine implements InferenceEngine {
   private async *completeStream(opts: {
     modelId: string;
     messages: ChatMsg[];
+    kvCache?: boolean | string;
     onThinking?: (delta: string) => void;
   }): AsyncGenerator<string> {
-    const run = startCompletion(opts.modelId, opts.messages, true);
+    const run = startCompletion(opts.modelId, opts.messages, true, opts.kvCache ?? false);
     const out = emptyOut();
     yield* runEvents(run, opts.onThinking, out);
     this.lastCompletionStats = out.stats;
@@ -266,8 +269,8 @@ export class LocalEngine implements InferenceEngine {
     };
   }
 
-  private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
-    const run = startCompletion(opts.modelId, opts.messages, false);
+  private async completeOnce(opts: { modelId: string; messages: ChatMsg[]; kvCache?: boolean | string }): Promise<string> {
+    const run = startCompletion(opts.modelId, opts.messages, false, opts.kvCache ?? false);
     const final = await run.final;
     this.lastCompletionStats = fromQvacStats(final.stats);
     this.lastThinkingText = final.thinkingText ?? "";
@@ -455,6 +458,7 @@ export class DelegatedEngine implements InferenceEngine {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    kvCache?: boolean | string;
     onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string> {
     if (this.servedBy === "local" && this.local) return this.local.complete(opts);
@@ -464,9 +468,10 @@ export class DelegatedEngine implements InferenceEngine {
   private async *completeStream(opts: {
     modelId: string;
     messages: ChatMsg[];
+    kvCache?: boolean | string;
     onThinking?: (delta: string) => void;
   }): AsyncGenerator<string> {
-    const run = startCompletion(opts.modelId, opts.messages, true);
+    const run = startCompletion(opts.modelId, opts.messages, true, opts.kvCache ?? false);
     this.lastReqId = run.requestId;
     const t0 = performance.now();
     let firstThinkAt = 0;
@@ -541,17 +546,17 @@ export class DelegatedEngine implements InferenceEngine {
   }
 
   /** Stream from the local fallback engine and mirror its stats/timing. */
-  private async *localStream(opts: { messages: ChatMsg[]; onThinking?: (d: string) => void }): AsyncGenerator<string> {
+  private async *localStream(opts: { messages: ChatMsg[]; kvCache?: boolean | string; onThinking?: (d: string) => void }): AsyncGenerator<string> {
     const local = this.local as LocalEngine;
     const id = this.localModelId as string;
-    yield* local.complete({ modelId: id, messages: opts.messages, stream: true, onThinking: opts.onThinking }) as AsyncGenerator<string>;
+    yield* local.complete({ modelId: id, messages: opts.messages, stream: true, kvCache: opts.kvCache, onThinking: opts.onThinking }) as AsyncGenerator<string>;
     this.lastCompletionStats = local.lastStats?.() ?? null;
     this.lastTimingVal = local.lastTiming?.() ?? null;
     this.lastThinkingText = local.lastThinking?.() ?? "";
   }
 
-  private async completeOnce(opts: { modelId: string; messages: ChatMsg[] }): Promise<string> {
-    const run = startCompletion(opts.modelId, opts.messages, false);
+  private async completeOnce(opts: { modelId: string; messages: ChatMsg[]; kvCache?: boolean | string }): Promise<string> {
+    const run = startCompletion(opts.modelId, opts.messages, false, opts.kvCache ?? false);
     const final = await run.final;
     this.lastCompletionStats = fromQvacStats(final.stats);
     this.lastThinkingText = final.thinkingText ?? "";

@@ -20,6 +20,7 @@ import { extname, join, normalize } from "node:path";
 import { collectSysInfo } from "@lifeline/core";
 
 import { getSettings, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
+import { engineManager } from "./engineManager";
 import { buildMeshSnapshot, probeMesh } from "./meshService";
 import type { ServerSettings } from "./protocol";
 import { tracked } from "./serialize";
@@ -106,11 +107,20 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     if (path === "/api/settings" && req.method === "GET") return json(res, 200, getSettings()), true;
     if (path === "/api/settings" && req.method === "PUT") {
       const body = JSON.parse((await readBody(req)).toString("utf8") || "{}");
+      // A changed model / grounding / peer set changes the warm-slot signature, so
+      // the next turn rebuilds it inside the turn lock — no teardown needed here.
       return json(res, 200, applySettingsPatch(body)), true;
     }
 
     if (path === "/api/mesh" && req.method === "GET") return json(res, 200, await buildMeshSnapshot()), true;
-    if (path === "/api/mesh/probe" && req.method === "POST") return json(res, 200, await tracked(() => probeMesh())), true;
+    if (path === "/api/mesh/probe" && req.method === "POST") {
+      // Probing closes the SDK worker, so tear the warm slot down first — inside the
+      // same lock — then probe; the next turn re-warms.
+      return json(res, 200, await tracked(async () => {
+        await engineManager.dispose();
+        return probeMesh();
+      })), true;
+    }
 
     if (path === "/api/models") return json(res, 200, MODEL_REGISTRY), true;
 

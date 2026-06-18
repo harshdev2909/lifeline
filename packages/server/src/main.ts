@@ -13,6 +13,7 @@ import { createServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import { HOST, MODEL_REGISTRY, PORT, getSettings, setupQvacEnv } from "./config";
+import { engineManager } from "./engineManager";
 import { createHttpHandler, deviceInfo } from "./http";
 import { buildMeshSnapshot } from "./meshService";
 import { runTurn } from "./orchestrator";
@@ -90,13 +91,20 @@ httpServer.listen(PORT, HOST, () => {
   );
 });
 
+let shuttingDown = false;
 function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
   process.stdout.write("\n  shutting down bridge…\n");
   cleanupUploads();
   wss.close();
-  httpServer.close(() => process.exit(0));
-  // Don't hang on lingering sockets.
-  setTimeout(() => process.exit(0), 1500).unref();
+  httpServer.close();
+  // Dispose the warm engine/worker so it never outlives the process.
+  engineManager
+    .dispose()
+    .catch(() => {})
+    .finally(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
 }
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);

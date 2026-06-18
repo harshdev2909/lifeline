@@ -48,6 +48,8 @@ export interface ModelLoadEvent {
   /** Wall-clock load time MEASURED by us. */
   load_ms: number;
   measured_by: "wall_clock";
+  /** True when a warm (already-loaded) model was reused — load_ms is then ~0. */
+  warm?: boolean;
   /** SDK-reported load/download gauges, when the profiler captured them. */
   sdk_load?: Record<string, number>;
 }
@@ -304,6 +306,7 @@ export class RunLogger {
     source: string;
     label: string;
     load_ms: number;
+    warm?: boolean;
     sdk_load?: Record<string, number>;
   }): void {
     this.write({

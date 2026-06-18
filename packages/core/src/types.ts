@@ -127,6 +127,14 @@ export interface InferenceEngine {
     modelId: string;
     messages: ChatMsg[];
     stream?: boolean;
+    /**
+     * KV-cache policy for this completion. `false` (the default) makes the turn
+     * STATELESS — the model processes only the given history, so a long-lived
+     * (warm) model can serve independent turns back-to-back without context
+     * bleed or CONTEXT_OVERFLOW, and without a worker teardown between turns.
+     * `true` reuses an auto-keyed cache; a string pins an explicit cache key.
+     */
+    kvCache?: boolean | string;
     /** Called with reasoning deltas (kept OUT of the streamed answer) for reasoning models. */
     onThinking?: (delta: string) => void;
   }): AsyncIterable<string> | Promise<string>;
