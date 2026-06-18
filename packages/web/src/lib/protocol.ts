@@ -40,7 +40,8 @@ export type ToolId =
   | "soap"
   | "corpus"
   | "classify"
-  | "illustrate";
+  | "illustrate"
+  | "adapt";
 
 export interface ToolUpload {
   role: string;
@@ -95,7 +96,21 @@ export type ToolOutput =
   | { tool: "soap"; text: string }
   | { tool: "corpus"; workspace: string; docCount: number; chunkCount: number; embedModel: string; chunks: CorpusChunk[] }
   | { tool: "classify"; mode: "triage" | "screen"; results: { label: string; confidence?: number }[]; reason?: string; note?: string }
-  | { tool: "illustrate"; dataUrl: string; width: number; height: number; steps: number; seed?: number; prompt: string };
+  | { tool: "illustrate"; dataUrl: string; width: number; height: number; steps: number; seed?: number; prompt: string }
+  | {
+      tool: "adapt";
+      status: string;
+      trainLoss?: number;
+      valLoss?: number;
+      valAccuracy?: number;
+      epochs: number;
+      steps: number;
+      adapterPath?: string;
+      testPrompt: string;
+      baseAnswer: string;
+      adaptedAnswer: string;
+      model: string;
+    };
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }

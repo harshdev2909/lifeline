@@ -22,6 +22,7 @@ import {
   KnowledgeBase,
   labelSetById,
   matchLabel,
+  runAdaptation,
   SCREEN_LABEL_SETS,
   MEDICAL_DISCLAIMER,
   MODELS,
@@ -66,6 +67,8 @@ export async function runTool(req: ToolRunRequest, emit: Emit, signal: AbortSign
       return runClassify(req, emit, signal);
     case "illustrate":
       return runIllustrate(req, emit, signal);
+    case "adapt":
+      return runAdapt(req, emit, signal);
     default:
       throw new Error(`Unknown tool: ${String((req as { tool: string }).tool)}`);
   }
@@ -535,6 +538,89 @@ async function runIllustrate(req: ToolRunRequest, emit: Emit, signal: AbortSigna
     },
   });
   emit({ type: "tool_done", runId, output: { tool: "illustrate", dataUrl, width: r.width, height: r.height, steps: r.steps, seed: r.seed, prompt: subject }, evidence: logger.path });
+}
+
+/**
+ * Adapt — train a LoRA adapter on a small local set, run the built-in frozen
+ * eval, and demonstrate it at inference (same prompt answered by the base model
+ * and by the adapter). Contained: Qwen3-0.6B at a short context.
+ */
+async function runAdapt(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Promise<void> {
+  const runId = req.runId;
+  const epochs = num(req, "epochs") ?? 2;
+  const testPrompt = str(req, "testPrompt") || undefined;
+
+  const logger = new RunLogger();
+  logger.session("ui (adapt tool)", collectSysInfo());
+  emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: "Loading Qwen3-0.6B…" });
+
+  let trainingStarted = false;
+  const r = await runAdaptation({
+    epochs,
+    testPrompt,
+    onLoad: (p) => emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: p.phase, progress: p.progress }),
+    onProgress: (pr) => {
+      if (!trainingStarted) {
+        trainingStarted = true;
+        emit({ type: "tool_stage", runId, stage: "load", status: "done" });
+      }
+      const phase = pr.isTrain ? "train" : "eval";
+      emit({
+        type: "tool_stage",
+        runId,
+        stage: "train",
+        status: "start",
+        detail: `epoch ${pr.epoch + 1} · step ${pr.step} · ${phase} loss ${pr.loss != null ? pr.loss.toFixed(3) : "—"} · eta ${Math.round(pr.etaMs / 1000)}s`,
+      });
+    },
+  });
+  if (signal.aborted) return;
+
+  logger.finetune({
+    model: r.model,
+    status: r.status,
+    epochs: r.epochs,
+    steps: r.steps,
+    train_loss: r.trainLoss,
+    val_loss: r.valLoss,
+    val_accuracy: r.valAccuracy,
+    adapter_path: r.adapterPath,
+    train_ms: r.train_ms,
+  });
+  emit({ type: "tool_stage", runId, stage: "train", status: "done", ms: r.train_ms });
+  emit({
+    type: "tool_telemetry",
+    runId,
+    telemetry: {
+      servedBy: "local",
+      metrics: [
+        { label: "model", value: "Qwen3-0.6B", hint: r.model },
+        { label: "steps", value: String(r.steps) },
+        ...(r.trainLoss != null ? [{ label: "train", value: r.trainLoss.toFixed(3), hint: "Final training loss." }] : []),
+        ...(r.valLoss != null ? [{ label: "val", value: r.valLoss.toFixed(3), hint: "Validation loss — the frozen eval." }] : []),
+        { label: "time", value: `${(r.train_ms / 1000).toFixed(0)}s`, hint: "Training wall-clock (measured)." },
+      ],
+    },
+  });
+  emit({
+    type: "tool_done",
+    runId,
+    output: {
+      tool: "adapt",
+      status: r.status,
+      trainLoss: r.trainLoss,
+      valLoss: r.valLoss,
+      valAccuracy: r.valAccuracy,
+      epochs: r.epochs,
+      steps: r.steps,
+      adapterPath: r.adapterPath,
+      testPrompt: r.testPrompt,
+      baseAnswer: r.baseAnswer,
+      adaptedAnswer: r.adaptedAnswer,
+      model: r.model,
+    },
+    evidence: logger.path,
+  });
 }
 
 /** Corpus manager — ingest the manual and show its chunks/sources. */

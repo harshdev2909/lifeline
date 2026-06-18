@@ -10,9 +10,10 @@
  */
 import type { ComponentType } from "react";
 
-import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
+import { Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
+import { AdaptTool } from "../components/tools/AdaptTool";
 import { ClassifyTool } from "../components/tools/ClassifyTool";
 import { CorpusTool } from "../components/tools/CorpusTool";
 import { IllustrateTool } from "../components/tools/IllustrateTool";
@@ -141,6 +142,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Re-index the manual and inspect the chunks that ground answers",
     icon: Database,
     Component: CorpusTool,
+  },
+  {
+    id: "adapt",
+    group: "adapt",
+    label: "Adapt the model",
+    blurb: "Train a LoRA adapter on a local set, eval it, and see before/after",
+    icon: GraduationCap,
+    Component: AdaptTool,
   },
   {
     id: "network",
