@@ -1,4 +1,4 @@
-import { CircleCheck, HardDrive, Lock, ShieldAlert } from "lucide-react";
+import { CircleCheck, HardDrive, Languages, Lock, RadioTower, ShieldAlert } from "lucide-react";
 
 import { useBridge } from "../../state/bridge";
 import { Wordmark } from "../brand/Logo";
@@ -32,8 +32,11 @@ export function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
         <section className="space-y-2.5">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-faint">How it stays safe</h3>
-          <Guarantee icon={CircleCheck} title="Grounded, or it declines">
-            Answers cite passages retrieved from the field manual. When nothing relevant is found, it refuses rather than guessing.
+          <Guarantee icon={CircleCheck} title="Refuses below the grounding threshold">
+            Answers cite passages retrieved from the field manual. When the best match scores under a fixed cutoff, it declines rather than guessing.
+          </Guarantee>
+          <Guarantee icon={Languages} title="Cross-lingual retrieval">
+            A question in Spanish or French is translated to the corpus language to retrieve English sources, then answered back in the original language — one language's question, grounded in another's manual.
           </Guarantee>
           <Guarantee icon={Lock} title="Untrusted text is fenced">
             Image, OCR, and retrieved text are treated as data, never instructions; planted prompt-injection is detected and ignored.
@@ -41,6 +44,16 @@ export function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChang
           <Guarantee icon={HardDrive} title="On-device & auditable">
             The browser never runs a model — it talks only to a local bridge. Every turn writes an auditable evidence log on disk.
             The network is used only for optional peer discovery, which is fully disclosed.
+          </Guarantee>
+        </section>
+
+        <section className="space-y-2.5 border-t border-hairline pt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-faint">Field readiness &amp; the mesh</h3>
+          <Guarantee icon={RadioTower} title="Responder &amp; incident handoff">
+            QVAC's peer link carries model inference, not arbitrary messages — so an incoming question to the responder and a case handed to a reviewer are an app-layer protocol over this local bridge (the only network the browser uses). On a multi-node setup they ride the mesh; the heavy model work always delegates over the real encrypted channel.
+          </Guarantee>
+          <Guarantee icon={CircleCheck} title="Constrained-link mode">
+            A resilience mode for a narrow, lossy channel: terse, byte-budgeted answers split into UTF-8-safe chunks with per-chunk retry. Off by default — the link readout shows the bytes, chunks, and retries.
           </Guarantee>
         </section>
 

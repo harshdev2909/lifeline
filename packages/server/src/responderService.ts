@@ -12,7 +12,7 @@
  * bridge (the only network the browser uses); on a multi-node deployment it
  * would ride the mesh. Heavy inference still delegates over the real channel.
  *
- * Robustness: every answer runs under the shared lock and an AbortController;
+ * Reliability: every answer runs under the shared lock and an AbortController;
  * turning the responder off aborts all in-flight work; runTurn keeps the worker
  * warm and reconciles it, so nothing is orphaned.
  */
