@@ -19,9 +19,10 @@ import { extname, join, normalize } from "node:path";
 
 import { collectSysInfo } from "@lifeline/core";
 
-import { getSettings, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
+import { getSettings, isModelKey, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
 import { engineManager } from "./engineManager";
 import { buildMeshSnapshot, probeMesh } from "./meshService";
+import { providerStatus, startProvider, stopProvider } from "./providerService";
 import type { ServerSettings } from "./protocol";
 import { tracked } from "./serialize";
 import { saveUpload, streamFile } from "./uploads";
@@ -114,8 +115,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
 
     if (path === "/api/mesh" && req.method === "GET") return json(res, 200, await buildMeshSnapshot()), true;
     if (path === "/api/mesh/probe" && req.method === "POST") {
-      // Probing closes the SDK worker, so tear the warm slot down first — inside the
-      // same lock — then probe; the next turn re-warms.
+      // Probing closes the SDK worker. If a live voice session has it pinned, don't —
+      // that would abort the in-flight transcription stream. Return the snapshot as-is.
+      if (engineManager.held) return json(res, 200, await buildMeshSnapshot()), true;
+      // Otherwise tear the warm slot down first (same lock), then probe; next turn re-warms.
       return json(res, 200, await tracked(async () => {
         await engineManager.dispose();
         return probeMesh();
@@ -123,6 +126,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     }
 
     if (path === "/api/models") return json(res, 200, MODEL_REGISTRY), true;
+
+    if (path === "/api/provider" && req.method === "GET") return json(res, 200, providerStatus()), true;
+    if (path === "/api/provider/start" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}") as { topic?: string; model?: string };
+      const model = body.model && isModelKey(body.model) ? body.model : getSettings().defaultModel;
+      return json(res, 200, await tracked(() => startProvider(body.topic ?? "", model))), true;
+    }
+    if (path === "/api/provider/stop" && req.method === "POST") {
+      return json(res, 200, await tracked(() => stopProvider())), true;
+    }
 
     if (path === "/api/upload" && req.method === "POST") {
       const kindHeader = String(req.headers["x-kind"] ?? "image");

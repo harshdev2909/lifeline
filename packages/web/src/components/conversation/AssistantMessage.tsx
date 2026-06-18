@@ -56,11 +56,11 @@ export function AssistantMessage({ a }: { a: AssistantMsg }) {
           <ReasoningAside text={a.thinking} active={a.thinkingActive} durationMs={a.thinkingMs} />
         )}
 
-        {/* Refusal treatment. */}
+        {/* Refusal treatment (shown once, in place of an answer). */}
         {a.status === "refused" && a.refusal && <RefusalBlock text={a.refusal} />}
 
         {/* The answer. */}
-        {a.answer && (
+        {a.answer && a.status !== "refused" && (
           <div className="text-[0.95rem] leading-[1.65] text-fg">
             <AnswerText text={a.answer} sources={a.citations?.sources} streaming={streaming} />
           </div>

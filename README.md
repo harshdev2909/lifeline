@@ -75,14 +75,18 @@ npm run ui
 
 This builds the UI and serves it from the bridge at `http://127.0.0.1:8787`. It is offline-first: fonts and assets are self-hosted and bundled, there is no runtime CDN, and it loads and runs with the network off. For live development, run `npm run bridge` and `npm run web` (the Vite dev server) in separate terminals.
 
-The interface is a focused conversation. Answers stream in token by token; chain-of-thought is shown in a separate, collapsible aside rather than inline; citation chips expand to the exact source snippet; and a quiet indicator shows where each answer ran — this device, a peer, or rerouted home — beside a time-to-first-token and tokens-per-second readout in a monospace face. The red-flag emergency, grounded, and ungrounded-refusal states each have their own calm treatment, and the disclaimer is always present. A live mesh visualizer shows this device and its peers with their roles and models, and animates real delegation and fallback as they happen. Image attachment (vision and OCR), turn-based voice (record → transcribe → answer → speak), a language selector, light and dark themes, and full keyboard and screen-reader support are all included.
+The interface is a focused conversation. Answers stream in token by token; chain-of-thought is shown in a separate, collapsible aside rather than inline; citation chips expand to the exact source snippet; and a quiet indicator shows where each answer ran — this device, a peer, or rerouted home — beside a time-to-first-token and tokens-per-second readout in a monospace face. The red-flag emergency, grounded, and ungrounded-refusal states each have their own calm treatment, and the disclaimer is always present. Image attachment (vision and OCR), a language selector, light and dark themes, and full keyboard and screen-reader support are all included.
+
+**Live voice.** A hands-free spoken mode holds a continuous conversation on-device: the mic streams to the bridge, Whisper's own voice-activity detection ends each turn on a pause, the grounded model answers, and the answer is spoken back as it is generated — no button between turns. Talking over the assistant interrupts it. A calm state machine (listening → thinking → speaking) and a live captioned transcript keep it glanceable; it degrades honestly to a snappy turn-based mode where streaming isn't available. After the first turn the model worker stays warm, so subsequent turns — local or delegated — skip the cold load and the peer handshake.
+
+**Mesh control panel.** The mesh view is an instrument, not a diagram. It shows this device and its peers with live status, roles, and models; connect or disconnect a peer by topic or key; flip routing between this device and a peer and see each turn's decision explained (the probe ladder, the winner, any fallback); read real per-peer served-turn stats; and toggle this device to serve a model to others, making the mesh bidirectional. Every value is real — no placeholder peers or invented metrics.
 
 | | |
 |---|---|
 | ![A grounded answer with an expanded citation and the telemetry readout](docs/screenshots/02-grounded-answer.png) | ![A real delegation: completion runs on a peer while the mesh shows it serving](docs/screenshots/07-delegation-midflight.png) |
 | A grounded answer with an expanded citation and the per-turn readout | A real delegation — completion runs on a peer; the mesh shows it serving |
 
-More screenshots — the red-flag emergency state, the light theme, and the live mesh — are in [`docs/screenshots/`](./docs/screenshots).
+More screenshots — the red-flag emergency state, the light theme, the live mesh, the [voice surface](docs/screenshots/09-voice-listening.png), and the [mesh control panel](docs/screenshots/10-mesh-control.png) — are in [`docs/screenshots/`](./docs/screenshots).
 
 ## How it works
 

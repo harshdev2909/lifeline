@@ -31,8 +31,6 @@ import {
   speakStream,
   TTS_SAMPLE_RATE,
   ungroundedRefusal,
-  unloadTranscriber,
-  unloadTts,
   type ChatMsg,
   type CompletionStats,
   type RetrievedPassage,
@@ -41,6 +39,7 @@ import {
 
 import { getSettings, isModelKey } from "./config";
 import { engineManager } from "./engineManager";
+import { recordDecision, recordServed } from "./peerStats";
 import type { ServerEvent, SourceChip, TurnOptions, VoiceState } from "./protocol";
 import { tracked } from "./serialize";
 
@@ -75,6 +74,7 @@ export class VoiceSession {
   private ttsActive = false;
   private busy = false; // a turn (LLM/TTS) is in progress
   private endpointAt = 0;
+  private held = false; // we pinned the worker for this session
 
   constructor(private readonly emit: Emit, private readonly emitBinary: EmitBinary) {}
 
@@ -86,10 +86,19 @@ export class VoiceSession {
     if (this.running) return;
     this.running = true;
     this.options = options;
-    this.setState("idle", "live", "warming speech models…");
+    this.setState("idle", "live", "warming models…");
     try {
-      this.whisperId = await loadTranscriber({ multilingual: Boolean(options.lang) });
-      this.ttsId = await loadTts({ language: options.lang && TTS_LANGS.has(options.lang) ? options.lang : "en" });
+      // Warm the LLM slot BEFORE opening the transcription stream, so any worker
+      // re-warm (teardown → close) happens now — never under the live STT RPC.
+      await tracked(() => engineManager.prepare(this.prepareOpts()));
+      engineManager.hold();
+      this.held = true;
+      // Warm-managed (load once, reuse) so re-entering voice never double-loads.
+      const ml = Boolean(options.lang);
+      const ttsLang = options.lang && TTS_LANGS.has(options.lang) ? options.lang : "en";
+      this.whisperId = await engineManager.loadAux(`whisper:${ml ? "ml" : "en"}`, () => loadTranscriber({ multilingual: ml }));
+      this.ttsId = await engineManager.loadAux(`tts:${ttsLang}`, () => loadTts({ language: ttsLang }));
+      // A fresh streaming session per conversation (the model stays loaded between sessions).
       this.stt = await openTranscription(this.whisperId, { endOfTurnSilenceMs: 600 });
     } catch (err) {
       this.emit({ type: "voice_error", message: err instanceof Error ? err.message : String(err) });
@@ -98,6 +107,19 @@ export class VoiceSession {
     }
     this.setState("listening", "live");
     void this.consume();
+  }
+
+  private prepareOpts() {
+    const settings = getSettings();
+    const modelKey = this.options.model ?? settings.defaultModel;
+    return {
+      model: isModelKey(modelKey) ? MODELS[modelKey] : MODELS.medgemma4b,
+      modelKey,
+      grounded: this.options.grounded ?? settings.grounded,
+      delegate: this.options.delegate ?? settings.delegate,
+      peerKeys: settings.peers.map((p) => p.key),
+      peerLabels: Object.fromEntries(settings.peers.map((p) => [p.key, p.label])),
+    };
   }
 
   /** Feed a chunk of mic PCM (16 kHz mono s16le). */
@@ -109,9 +131,12 @@ export class VoiceSession {
   }
 
   async stop(): Promise<void> {
-    if (!this.running && !this.whisperId && !this.ttsId) return;
+    if (!this.running && !this.held) return;
     this.running = false;
     this.ttsActive = false;
+    // Close the streaming RPC FIRST so nothing is in flight, THEN release the pin
+    // so future teardowns can't abort a live stream. The whisper/tts models stay
+    // warm (engineManager owns them; cleared on the next worker teardown).
     try {
       this.stt?.end();
       this.stt?.destroy();
@@ -119,8 +144,10 @@ export class VoiceSession {
       /* ignore */
     }
     this.stt = undefined;
-    if (this.whisperId) await unloadTranscriber(this.whisperId);
-    if (this.ttsId) await unloadTts(this.ttsId);
+    if (this.held) {
+      engineManager.release();
+      this.held = false;
+    }
     this.whisperId = undefined;
     this.ttsId = undefined;
     this.setState("idle", "live");
@@ -255,15 +282,9 @@ export class VoiceSession {
     prompt: string,
     logger: RunLogger,
   ): Promise<{ answer: string; served: "local" | "remote"; llmTtft: number; llmMs: number }> {
-    const settings = getSettings();
-    const grounded = this.options.grounded ?? settings.grounded;
-    const delegate = this.options.delegate ?? settings.delegate;
-    const modelKey = this.options.model ?? settings.defaultModel;
-    const model = isModelKey(modelKey) ? MODELS[modelKey] : MODELS.medgemma4b;
-    const peerKeys = settings.peers.map((p) => p.key);
-    const peerLabels = Object.fromEntries(settings.peers.map((p) => [p.key, p.label]));
-
-    const prepared = await engineManager.prepare({ model, modelKey, grounded, delegate, peerKeys, peerLabels });
+    const opts = this.prepareOpts();
+    const { model, grounded, delegate } = opts;
+    const prepared = await engineManager.prepare(opts);
     const { engine, modelId, kb } = prepared;
     if (prepared.ingest) logger.ragIngest(prepared.ingest);
     logger.modelLoad({ modelId, source: typeof model.src === "string" ? model.src : model.label, label: model.label, load_ms: prepared.loadMs, warm: prepared.warm });
@@ -320,6 +341,11 @@ export class VoiceSession {
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
     const timing = engine.lastTiming?.();
     const measuredTtft = firstAt ? Math.round(firstAt - t0) : llmMs;
+
+    if (delegate && di.route) {
+      recordDecision({ candidates: di.route.candidates.map((c) => ({ peerKey: c.peer_key, label: c.label, ok: c.ok, probeMs: c.probe_ms, error: c.error })), chosen: di.route.chosen, servedBy: di.served_by, fallbackReason: di.fallback_reason });
+    }
+    if (di.served_by === "remote") recordServed(di.peer_key ?? "", { ttftMs: sdk?.ttft_ms ?? measuredTtft, tps: sdk?.tokens_per_sec ?? (chunks > 0 ? chunks / (llmMs / 1000) : 0) });
 
     this.emit({ type: "served_by", turnId, servedBy: di.served_by, peerKey: di.peer_key, transportMs: prepared.warm ? undefined : di.transport_setup_ms != null ? Math.round(di.transport_setup_ms) : undefined, warm: prepared.warm && di.served_by === "remote", fallback: delegate && di.served_by === "local", reason: di.fallback_reason });
 

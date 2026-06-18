@@ -17,12 +17,28 @@ import { engineManager } from "./engineManager";
 import { createHttpHandler, deviceInfo } from "./http";
 import { buildMeshSnapshot } from "./meshService";
 import { runTurn } from "./orchestrator";
+import { stopProvider } from "./providerService";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import { tracked } from "./serialize";
 import { cleanupUploads } from "./uploads";
 import { VoiceSession } from "./voice";
 
 setupQvacEnv();
+
+// Safety net: tearing the SDK worker down aborts any in-flight RPC, and the SDK
+// surfaces that as an unhandled stream 'error' (WORKER_SHUTDOWN, code 50206). It
+// is benign — the teardown is intentional — so swallow exactly that and keep the
+// bridge alive; anything else still crashes loudly.
+process.on("uncaughtException", (err: unknown) => {
+  const e = err as { code?: number; message?: string };
+  const msg = e?.message ?? String(err);
+  if (e?.code === 50206 || /WORKER_SHUTDOWN|shutting down/i.test(msg)) {
+    process.stderr.write(`  (ignored benign worker-shutdown RPC abort)\n`);
+    return;
+  }
+  process.stderr.write(`\nUncaught: ${msg}\n${(err as Error)?.stack ?? ""}\n`);
+  process.exit(1);
+});
 
 const httpServer = createServer(createHttpHandler());
 const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
@@ -120,11 +136,8 @@ function shutdown(): void {
   cleanupUploads();
   wss.close();
   httpServer.close();
-  // Dispose the warm engine/worker so it never outlives the process.
-  engineManager
-    .dispose()
-    .catch(() => {})
-    .finally(() => process.exit(0));
+  // Stop serving and dispose the warm engine/worker so nothing outlives the process.
+  Promise.allSettled([stopProvider(), engineManager.dispose()]).finally(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.once("SIGINT", shutdown);
