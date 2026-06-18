@@ -115,8 +115,10 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
 
     if (path === "/api/mesh" && req.method === "GET") return json(res, 200, await buildMeshSnapshot()), true;
     if (path === "/api/mesh/probe" && req.method === "POST") {
-      // Probing closes the SDK worker, so tear the warm slot down first — inside the
-      // same lock — then probe; the next turn re-warms.
+      // Probing closes the SDK worker. If a live voice session has it pinned, don't —
+      // that would abort the in-flight transcription stream. Return the snapshot as-is.
+      if (engineManager.held) return json(res, 200, await buildMeshSnapshot()), true;
+      // Otherwise tear the warm slot down first (same lock), then probe; next turn re-warms.
       return json(res, 200, await tracked(async () => {
         await engineManager.dispose();
         return probeMesh();

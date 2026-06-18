@@ -25,6 +25,21 @@ import { VoiceSession } from "./voice";
 
 setupQvacEnv();
 
+// Safety net: tearing the SDK worker down aborts any in-flight RPC, and the SDK
+// surfaces that as an unhandled stream 'error' (WORKER_SHUTDOWN, code 50206). It
+// is benign — the teardown is intentional — so swallow exactly that and keep the
+// bridge alive; anything else still crashes loudly.
+process.on("uncaughtException", (err: unknown) => {
+  const e = err as { code?: number; message?: string };
+  const msg = e?.message ?? String(err);
+  if (e?.code === 50206 || /WORKER_SHUTDOWN|shutting down/i.test(msg)) {
+    process.stderr.write(`  (ignored benign worker-shutdown RPC abort)\n`);
+    return;
+  }
+  process.stderr.write(`\nUncaught: ${msg}\n${(err as Error)?.stack ?? ""}\n`);
+  process.exit(1);
+});
+
 const httpServer = createServer(createHttpHandler());
 const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 

@@ -65,9 +65,28 @@ interface Slot {
 
 class EngineManager {
   private slot: Slot | null = null;
+  /** While > 0 the worker is pinned (a live streaming RPC — voice — owns it); no teardown. */
+  private holds = 0;
+  /** Auxiliary models loaded on the same worker (whisper, tts), reused across calls. */
+  private aux = new Map<string, string>();
 
   private sigOf(o: PrepareOpts): string {
     return JSON.stringify({ m: o.modelKey, g: o.grounded, d: o.delegate, p: o.delegate ? o.peerKeys : [] });
+  }
+
+  /**
+   * Pin the worker so it is never torn down (and `close()`d) underneath a live
+   * streaming RPC such as the voice transcription session — that would abort the
+   * in-flight RPC and crash the process. Always pair with release().
+   */
+  hold(): void {
+    this.holds++;
+  }
+  release(): void {
+    if (this.holds > 0) this.holds--;
+  }
+  get held(): boolean {
+    return this.holds > 0;
   }
 
   /** Whether the current warm slot serves a given config (for UI/status). */
@@ -78,7 +97,9 @@ class EngineManager {
   /** Get a ready engine (+ KB for grounded turns), loading once and reusing after. */
   async prepare(o: PrepareOpts): Promise<Prepared> {
     const sig = this.sigOf(o);
-    if (this.slot && this.slot.sig === sig) {
+    // Reuse on a signature match — and ALWAYS reuse while pinned, so a live voice
+    // session never triggers a worker teardown mid-stream.
+    if (this.slot && (this.slot.sig === sig || this.holds > 0)) {
       return {
         engine: this.slot.engine,
         modelId: this.slot.modelId,
@@ -120,10 +141,23 @@ class EngineManager {
    * — a lazy re-warm that keeps the warm benefit while a peer is healthy.
    */
   reconcile(): void {
-    if (!this.slot) return;
+    if (!this.slot || this.holds > 0) return; // never tear down while pinned (voice)
     if (this.slot.delegate && this.slot.engine.delegationInfo?.()?.served_by === "local") {
       void this.teardown();
     }
+  }
+
+  /**
+   * Load an auxiliary model on the same worker once and reuse it (whisper, tts).
+   * Keyed by the caller so re-entry never double-loads (which the SDK rejects with
+   * "already registered"). Cleared when the worker is torn down.
+   */
+  async loadAux(key: string, loader: () => Promise<string>): Promise<string> {
+    const existing = this.aux.get(key);
+    if (existing) return existing;
+    const id = await loader();
+    this.aux.set(key, id);
+    return id;
   }
 
   /** Drop the warm slot (e.g. on a settings change or before a mesh probe closes the worker). */
@@ -138,6 +172,9 @@ class EngineManager {
   private async teardown(): Promise<void> {
     const slot = this.slot;
     this.slot = null;
+    // Auxiliary models live on the worker that dispose() closes — forget them so
+    // the next voice session reloads cleanly rather than hitting "already registered".
+    this.aux.clear();
     if (!slot) return;
     // Close the KB (unloads the embedding model) BEFORE disposing the engine,
     // since engine.dispose() closes the shared worker the KB also uses.
