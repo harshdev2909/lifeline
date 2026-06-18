@@ -7,6 +7,7 @@ import { uploadFile } from "../../lib/api";
 import type { Lang, ModelKey, TurnAttachment } from "../../lib/protocol";
 import { startRecording, type Recorder } from "../../lib/recorder";
 import { useBridge } from "../../state/bridge";
+import { VoiceStartButton } from "../voice/VoiceSurface";
 import { IconButton } from "../ui/Button";
 import { Select } from "../ui/Field";
 import { Tooltip } from "../ui/Tooltip";
@@ -184,10 +185,16 @@ export function Composer() {
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
 
-              <Tooltip content={recorder ? "Stop" : "Ask by voice"}>
-                <IconButton label="Ask by voice" onClick={toggleRecording} tone="accent" active={Boolean(recorder)}>
+              <Tooltip content={recorder ? "Stop" : "Record one question"}>
+                <IconButton label="Record one question" onClick={toggleRecording} tone="accent" active={Boolean(recorder)}>
                   <Mic className="h-[18px] w-[18px]" />
                 </IconButton>
+              </Tooltip>
+
+              <Tooltip content="Hands-free live conversation">
+                <span>
+                  <VoiceStartButton />
+                </span>
               </Tooltip>
 
               <div className="mx-1 h-5 w-px bg-hairline" />
@@ -198,6 +205,7 @@ export function Composer() {
                 onValueChange={(v) => setLang(v as Lang)}
                 options={LANGS}
                 className="h-8"
+                side="top"
               />
 
               <Toggle active={grounded} onClick={() => setGrounded((g) => !g)} icon={BookOpen} label="Ground in the field manual" />
@@ -210,7 +218,9 @@ export function Composer() {
                   value={model}
                   onValueChange={(v) => setModel(v as ModelKey)}
                   options={models.map((m) => ({ value: m.key, label: m.label }))}
-                  className="h-8 max-w-[12rem]"
+                  className="h-8 w-[12.5rem]"
+                  align="center"
+                  side="top"
                 />
                 {busy && activeTurn ? (
                   <button onClick={() => cancel(activeTurn.id)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 text-sm text-fg-muted hover:text-fg">

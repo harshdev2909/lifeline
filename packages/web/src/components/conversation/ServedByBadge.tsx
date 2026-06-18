@@ -29,7 +29,7 @@ export function ServedByBadge({ served }: { served: ServedBy }) {
         content={
           <span>
             peer {shortKey(served.peerKey)}
-            {served.transportMs != null && <> · link {ms(served.transportMs)} ms</>}
+            {served.warm ? <> · warm link (reused)</> : served.transportMs != null && <> · link {ms(served.transportMs)} ms</>}
           </span>
         }
       >

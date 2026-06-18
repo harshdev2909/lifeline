@@ -1,9 +1,14 @@
 /**
  * orchestrator.ts — runs one conversation turn through @lifeline/core and emits
- * the streaming events the UI renders. This is the event-driven sibling of the
- * CLI's `ask` command: same engine seam, same RAG + safety + modality chain,
- * same evidence log — but instead of writing to a terminal it calls `emit` with
- * structured ServerEvents. It imports only @lifeline/core; never @qvac/sdk.
+ * the streaming events the UI renders. The event-driven sibling of the CLI's
+ * `ask`: same engine seam, RAG, safety, and modality chain, same evidence log,
+ * but it emits structured ServerEvents instead of writing to a terminal.
+ *
+ * The completion model and (for grounded turns) the KnowledgeBase are kept WARM
+ * across turns by the EngineManager — loaded once, reused after — so a
+ * conversation does not re-pay worker init or the DHT holepunch every turn. Each
+ * turn stays isolated via `kvCache:false`. Imports only @lifeline/core; never
+ * @qvac/sdk.
  */
 import { performance } from "node:perf_hooks";
 
@@ -17,7 +22,6 @@ import {
   extractCitations,
   extractText,
   EMERGENCY_NOTICE,
-  KnowledgeBase,
   MEDICAL_DISCLAIMER,
   MODELS,
   RunLogger,
@@ -29,14 +33,14 @@ import {
   type ChatMsg,
   type CompletionStats,
   type DelegationInfo,
-  type EngineOptions,
   type InferenceEngine,
   type ModelRef,
   type RetrievedPassage,
   type SafetyResult,
 } from "@lifeline/core";
 
-import { DEFAULT_CORPUS, getSettings, isModelKey } from "./config";
+import { getSettings, isModelKey } from "./config";
+import { engineManager } from "./engineManager";
 import type { ServerEvent, SourceChip, TurnRequest } from "./protocol";
 import { getFile, registerFile } from "./uploads";
 
@@ -50,13 +54,7 @@ function resolveModel(key: string): ModelRef {
 }
 
 function toChips(tagged: { tag: string; p: RetrievedPassage }[]): SourceChip[] {
-  return tagged.map((t) => ({
-    tag: t.tag,
-    source: t.p.source,
-    section: t.p.section,
-    score: t.p.score,
-    snippet: t.p.snippet,
-  }));
+  return tagged.map((t) => ({ tag: t.tag, source: t.p.source, section: t.p.section, score: t.p.score, snippet: t.p.snippet }));
 }
 
 /** Run a turn, streaming ServerEvents through `emit`. Resolves when fully done. */
@@ -68,7 +66,8 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
   const delegate = opts.delegate ?? settings.delegate;
   const lang = opts.lang ?? settings.lang;
   const speak = opts.speak ?? settings.speak;
-  const model = resolveModel(opts.model ?? settings.defaultModel);
+  const modelKey = opts.model ?? settings.defaultModel;
+  const model = resolveModel(modelKey);
 
   const attach = (kind: "image" | "ocr" | "audio") => {
     const a = req.attachments?.find((x) => x.kind === kind);
@@ -85,22 +84,11 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
   const logger = new RunLogger();
   logger.session(delegate ? "ui (delegated)" : "ui (local)", collectSysInfo());
 
-  // Mesh peers (preference-ordered) for the delegated path.
   const peerKeys = settings.peers.map((p) => p.key);
   const peerLabels = Object.fromEntries(settings.peers.map((p) => [p.key, p.label]));
-  const delegatedOpts = (): EngineOptions => ({
-    kind: "delegated",
-    ...(peerKeys.length ? { providerKeys: peerKeys, peerLabels } : {}),
-    onProgress: (p) => stage("load", "start", { detail: p.phase, progress: p.progress }),
-  });
 
-  const engine: InferenceEngine = createEngine(
-    delegate && peerKeys.length ? delegatedOpts() : { kind: "local" },
-  );
-
-  let kb: KnowledgeBase | undefined;
   try {
-    // ---- Voice in (local STT) ----
+    // ---- Voice in (local STT; transient model on the warm worker) ----
     if (audioFile) {
       stage("stt", "start");
       const t0 = performance.now();
@@ -120,39 +108,39 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
       stage("translate_in", "done", { detail: tr.text, ms: tr.ms });
     }
 
-    // ---- Vision (multimodal describe), optionally delegated ----
+    // ---- Vision (multimodal describe). Transient engine on the warm worker:
+    //      profile:false and NO dispose(), so it never closes the warm worker. ----
     let visionFindings: string | undefined;
     if (imageFile) {
       if (!prompt) prompt = "Based on what is shown, what first aid should I give?";
       stage("vision", "start", { detail: delegate ? "delegated" : "local" });
-      const vEngine = createEngine(delegate && peerKeys.length ? delegatedOpts() : { kind: "local" });
-      try {
-        const vId = await vEngine.loadModel({ model: MODELS.vision });
-        let findings = "";
-        const t0 = performance.now();
-        const it = vEngine.complete({
-          modelId: vId,
-          stream: true,
-          messages: [
-            { role: "system", content: buildVisionSystemPrompt() },
-            { role: "user", content: "Describe the observable medical findings in this image.", attachments: [{ path: imageFile.path }] },
-          ],
-        }) as AsyncIterable<string>;
-        for await (const s of it) findings += s;
-        visionFindings = findings.trim();
-        const vDi = vEngine.delegationInfo?.() ?? { served_by: "local" as const };
-        const vinj = detectInjection(visionFindings);
-        logger.injectionGuard({ source: "vision", detected: vinj.detected, patterns: vinj.patterns, action: vinj.detected ? "fenced+flagged" : "fenced" });
-        if (vinj.detected) emit({ type: "injection", turnId, source: "vision", detected: true, patterns: vinj.patterns });
-        logger.vision({ model: MODELS.vision.label, image: imageFile.name, findings_chars: visionFindings.length, total_ms: Math.round(performance.now() - t0), served_by: vDi.served_by });
-        await vEngine.unload(vId);
-        stage("vision", "done", { detail: visionFindings.slice(0, 140), servedBy: vDi.served_by });
-      } finally {
-        await vEngine.dispose?.();
-      }
+      const vEngine: InferenceEngine = createEngine(
+        delegate && peerKeys.length ? { kind: "delegated", providerKeys: peerKeys, peerLabels, profile: false } : { kind: "local", profile: false },
+      );
+      const vId = await vEngine.loadModel({ model: MODELS.vision });
+      let findings = "";
+      const t0 = performance.now();
+      const it = vEngine.complete({
+        modelId: vId,
+        stream: true,
+        kvCache: false,
+        messages: [
+          { role: "system", content: buildVisionSystemPrompt() },
+          { role: "user", content: "Describe the observable medical findings in this image.", attachments: [{ path: imageFile.path }] },
+        ],
+      }) as AsyncIterable<string>;
+      for await (const s of it) findings += s;
+      visionFindings = findings.trim();
+      const vDi = vEngine.delegationInfo?.() ?? { served_by: "local" as const };
+      const vinj = detectInjection(visionFindings);
+      logger.injectionGuard({ source: "vision", detected: vinj.detected, patterns: vinj.patterns, action: vinj.detected ? "fenced+flagged" : "fenced" });
+      if (vinj.detected) emit({ type: "injection", turnId, source: "vision", detected: true, patterns: vinj.patterns });
+      logger.vision({ model: MODELS.vision.label, image: imageFile.name, findings_chars: visionFindings.length, total_ms: Math.round(performance.now() - t0), served_by: vDi.served_by });
+      await vEngine.unload(vId); // unload the transient model; leave the worker (and warm slot) intact
+      stage("vision", "done", { detail: visionFindings.slice(0, 140), servedBy: vDi.served_by });
     }
 
-    // ---- OCR (local; untrusted text, fenced) ----
+    // ---- OCR (local; untrusted text, fenced; transient model on the warm worker) ----
     let ocrText: string | undefined;
     if (ocrFile) {
       if (!prompt) prompt = "Based on the text in this image, what should I do?";
@@ -168,15 +156,30 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
 
     if (!prompt) throw new Error("Empty message — type a question or attach an image or recording.");
 
+    // ---- Warm engine + KnowledgeBase (loaded once, reused after) ----
+    stage("load", "start", { detail: model.label });
+    const prepared = await engineManager.prepare({
+      model,
+      modelKey,
+      grounded,
+      delegate,
+      peerKeys,
+      peerLabels,
+      onProgress: (p) => stage("load", "start", { detail: p.phase, progress: p.progress }),
+    });
+    const { engine, modelId, kb, warm, loadMs } = prepared;
+    let di: DelegationInfo = prepared.di;
+    if (prepared.ingest) logger.ragIngest(prepared.ingest);
+    logger.modelLoad({ modelId, source: typeof model.src === "string" ? model.src : model.label, label: model.label, load_ms: loadMs, warm, sdk_load: engine.loadStats?.() });
+    stage("load", "done", { detail: warm ? "warm · reused" : model.label, ms: Math.round(loadMs), servedBy: di.served_by });
+    emitServedBy(emit, turnId, di, delegate, warm);
+    if (di.route) emit({ type: "route", turnId, candidates: di.route.candidates.map((c) => ({ peerKey: c.peer_key, label: c.label, ok: c.ok, probeMs: c.probe_ms, error: c.error })), chosen: di.route.chosen, servedBy: di.served_by });
+
     // ---- RAG retrieval (local) + safety ----
     let passages: RetrievedPassage[] = [];
     let safety: SafetyResult = { red_flag: false, red_flag_terms: [], grounded: true, action: "answer" };
-    if (grounded) {
+    if (grounded && kb) {
       stage("retrieval", "start");
-      kb = new KnowledgeBase();
-      await kb.open();
-      const ing = await kb.ingest(DEFAULT_CORPUS);
-      logger.ragIngest(ing);
       const r = await kb.retrieve(prompt, 4);
       passages = r.passages;
       logger.ragSearch(r.stats);
@@ -189,12 +192,10 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
       stage("retrieval", "done", { detail: `${passages.length} passage(s), top ${passages[0]?.score.toFixed(2) ?? "—"}` });
       emit({ type: "safety", turnId, redFlag: safety.red_flag, terms: safety.red_flag_terms, grounded: safety.grounded, action: safety.action });
     } else {
-      // Ungrounded chat still gets a red-flag scan so emergencies always lead.
       safety = assessSafety({ query: prompt, grounded: true });
       emit({ type: "safety", turnId, redFlag: safety.red_flag, terms: safety.red_flag_terms, grounded: true, action: safety.action });
     }
 
-    // ---- Ungrounded refusal: never hallucinate; skip the model ----
     if (grounded && safety.action === "refuse_ungrounded") {
       emit({ type: "refusal", turnId, text: ungroundedRefusal(), disclaimer: MEDICAL_DISCLAIMER });
       emit({ type: "done", turnId, answer: "", disclaimer: MEDICAL_DISCLAIMER, evidence: logger.path });
@@ -209,24 +210,14 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
     if (ocrText) tagged.unshift({ tag: "OCR", p: { id: "ocr", source: "image", section: "OCR text", content: ocrText, score: 1, snippet: ocrText.slice(0, 120).replace(/\n/g, " ") } });
     const messages: ChatMsg[] = tagged.length
       ? [{ role: "system", content: buildGroundedSystemPrompt(tagged.map((t) => ({ tag: t.tag, content: t.p.content }))) }, { role: "user", content: prompt }]
-      : buildSystemMessages(prompt);
+      : [
+          { role: "system", content: DEFAULT_SYSTEM },
+          { role: "user", content: prompt },
+        ];
 
-    // ---- Load the completion model ----
-    stage("load", "start", { detail: model.label });
-    const tLoad0 = performance.now();
-    const modelId = await engine.loadModel({ model });
-    const loadMs = performance.now() - tLoad0;
-    logger.modelLoad({ modelId, source: typeof model.src === "string" ? model.src : model.label, label: model.label, load_ms: loadMs, sdk_load: engine.loadStats?.() });
-
-    let di: DelegationInfo = engine.delegationInfo?.() ?? { served_by: "local" };
-    stage("load", "done", { detail: model.label, ms: Math.round(loadMs), servedBy: di.served_by });
-    emitServedBy(emit, turnId, di, delegate);
-    if (di.route) emit({ type: "route", turnId, candidates: di.route.candidates.map((c) => ({ peerKey: c.peer_key, label: c.label, ok: c.ok, probeMs: c.probe_ms, error: c.error })), chosen: di.route.chosen, servedBy: di.served_by });
-
-    // ---- Stream the answer; reasoning routed to a separate aside ----
+    // ---- Stream the answer (kvCache:false → independent turn); reasoning aside ----
     let answer = "";
     let thinkingChars = 0;
-    let thinkingStartedAt = 0;
     const t0 = performance.now();
     let firstAt = 0;
     let chunks = 0;
@@ -234,8 +225,8 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
       modelId,
       messages,
       stream: true,
+      kvCache: false,
       onThinking: (delta) => {
-        if (!thinkingStartedAt) thinkingStartedAt = performance.now();
         thinkingChars += delta.length;
         emit({ type: "thinking", turnId, delta });
       },
@@ -250,8 +241,8 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
     const totalMs = performance.now() - t0;
     if (thinkingChars > 0) emit({ type: "thinking_done", turnId, ms: engine.lastTiming?.()?.thinking_ms ?? 0, chars: thinkingChars });
 
-    // Re-read delegation: a mid-stream stall may have flipped it to local.
     di = engine.delegationInfo?.() ?? di;
+    emitServedBy(emit, turnId, di, delegate, warm);
     const timing = engine.lastTiming?.();
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
     const measured = {
@@ -262,7 +253,6 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
     };
     logger.inference({ modelId, prompt_chars: prompt.length, prompt_tokens: sdk?.prompt_tokens, measured, sdk_reported: sdk });
 
-    emitServedBy(emit, turnId, di, delegate);
     if (delegate && di.route) logger.routing({ candidates: di.route.candidates, chosen: di.route.chosen, served_by: di.served_by });
     if (di.served_by === "remote") {
       logger.delegation({ peer_key: di.peer_key ?? "", transport_setup_ms: Math.round(di.transport_setup_ms ?? 0), e2e_encrypted: "per-docs", modelId, ttft_ms: sdk?.ttft_ms ?? measured.ttft_ms, tokens_per_sec: sdk?.tokens_per_sec ?? measured.tokens_per_sec, completion_tokens: sdk?.completion_tokens ?? measured.completion_tokens });
@@ -281,7 +271,6 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
       emit({ type: "citations", turnId, sources: toChips(tagged), cited, attached, hallucinated });
     }
 
-    // ---- Telemetry (SDK-reported headline, our wall-clock as backup) ----
     emit({
       type: "telemetry",
       turnId,
@@ -300,10 +289,8 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
     });
 
     logger.sdkProfile(engine.profilerSnapshot?.());
-    await engine.unload(modelId);
-    logger.modelUnload(modelId);
+    // NOTE: no unload/dispose — the model stays warm for the next turn.
 
-    // ---- Translate answer back ----
     if (lang && answer.trim()) {
       stage("translate_out", "start", { detail: `en→${lang}` });
       const tr = await translateFromEnglish(answer.trim(), lang);
@@ -312,7 +299,6 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
       emit({ type: "localized", turnId, lang, text: tr.text });
     }
 
-    // ---- Voice out (TTS) ----
     if (speak && answer.trim()) {
       stage("tts", "start");
       const wavPath = logger.path.replace(/run-(.*)\.jsonl$/, "answer-$1.wav");
@@ -325,16 +311,9 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
 
     emit({ type: "done", turnId, answer, disclaimer: MEDICAL_DISCLAIMER, evidence: logger.path });
   } finally {
-    if (kb) await kb.close();
-    await engine.dispose?.();
+    // Keep the worker warm; only drop the slot if a delegated turn fell back to local.
+    engineManager.reconcile();
   }
-}
-
-function buildSystemMessages(prompt: string): ChatMsg[] {
-  return [
-    { role: "system", content: DEFAULT_SYSTEM },
-    { role: "user", content: prompt },
-  ];
 }
 
 function emitStage(
@@ -347,13 +326,15 @@ function emitStage(
   emit({ type: "stage", turnId, stage, status, ...(extra as object) });
 }
 
-function emitServedBy(emit: Emit, turnId: string, di: DelegationInfo, delegate: boolean): void {
+function emitServedBy(emit: Emit, turnId: string, di: DelegationInfo, delegate: boolean, warm = false): void {
   emit({
     type: "served_by",
     turnId,
     servedBy: di.served_by,
     peerKey: di.peer_key,
-    transportMs: di.transport_setup_ms != null ? Math.round(di.transport_setup_ms) : undefined,
+    // On a warm (reused) link no setup is paid this turn, so don't report a stale time.
+    transportMs: warm ? undefined : di.transport_setup_ms != null ? Math.round(di.transport_setup_ms) : undefined,
+    warm: warm && di.served_by === "remote",
     fallback: delegate && di.served_by === "local",
     reason: di.fallback_reason,
   });

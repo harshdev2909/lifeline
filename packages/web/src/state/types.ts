@@ -8,9 +8,19 @@ import type {
   TurnOptions,
   TurnStage,
   TurnTelemetry,
+  VoiceState,
 } from "../lib/protocol";
 
 export type ConnStatus = "connecting" | "open" | "closed";
+
+export interface VoiceUi {
+  active: boolean;
+  state: VoiceState;
+  /** Live mic input level 0..1 (from the server's VAD). */
+  level: number;
+  speaking: boolean;
+  mode: "live" | "turn-based";
+}
 
 export interface StageEntry {
   stage: TurnStage;
@@ -34,6 +44,7 @@ export interface ServedBy {
   servedBy: "local" | "remote";
   peerKey?: string;
   transportMs?: number;
+  warm?: boolean;
   fallback?: boolean;
   reason?: string;
 }
@@ -87,4 +98,5 @@ export interface BridgeState {
   /** Bumped whenever a real delegation/fallback/route event arrives, to retrigger mesh animation. */
   meshPulse: number;
   lastDelegation?: { turnId: string; servedBy: "local" | "remote"; peerKey?: string; fallback?: boolean };
+  voice: VoiceUi;
 }

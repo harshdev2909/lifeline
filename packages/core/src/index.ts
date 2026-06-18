@@ -35,6 +35,20 @@ export type { SdkLogLevel } from "./sdklog";
 export { transcribeAudio } from "./voice";
 export type { TranscribeResult, TranscribeOptions } from "./voice";
 
+export {
+  loadTranscriber,
+  openTranscription,
+  unloadTranscriber,
+  loadTts,
+  speakStream,
+  unloadTts,
+  cancelKind,
+  STT_SAMPLE_RATE,
+  TTS_SAMPLE_RATE,
+  VAD_SILERO_SRC,
+} from "./voicestream";
+export type { SttEvent, TranscriptionSession, SpokenStream, TtsConfig } from "./voicestream";
+
 export { synthesizeToWav, wavBuffer } from "./tts";
 export type { TtsResult, TtsOptions } from "./tts";
 
@@ -79,6 +93,7 @@ export type {
   RoutingEvent,
   SdkProfileEvent,
   SessionEvent,
+  VoiceTurnEvent,
 } from "./logger";
 
 export { collectSysInfo, formatSysInfoTable } from "./sysinfo";

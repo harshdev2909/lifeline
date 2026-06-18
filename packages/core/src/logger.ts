@@ -48,6 +48,8 @@ export interface ModelLoadEvent {
   /** Wall-clock load time MEASURED by us. */
   load_ms: number;
   measured_by: "wall_clock";
+  /** True when a warm (already-loaded) model was reused — load_ms is then ~0. */
+  warm?: boolean;
   /** SDK-reported load/download gauges, when the profiler captured them. */
   sdk_load?: Record<string, number>;
 }
@@ -248,8 +250,27 @@ export interface MedbenchEvent {
   rows: MedbenchRow[];
 }
 
+export interface VoiceTurnEvent {
+  type: "voice_turn";
+  ts: string;
+  /** Trailing silence (ms) that ended the user's turn (VAD endpoint). */
+  endpoint_silence_ms?: number;
+  /** Per-stage split, all measured by us (wall-clock). */
+  stt_ms?: number;
+  llm_ttft_ms?: number;
+  llm_ms?: number;
+  tts_ms?: number;
+  /** True if the assistant was interrupted (barge-in) and what was cancelled. */
+  barge_in?: boolean;
+  cancelled?: string[];
+  served_by: "local" | "remote";
+  transcript_chars: number;
+  answer_chars: number;
+}
+
 export type EvidenceEvent =
   | SessionEvent
+  | VoiceTurnEvent
   | ModelLoadEvent
   | InferenceEvent
   | ModelUnloadEvent
@@ -304,6 +325,7 @@ export class RunLogger {
     source: string;
     label: string;
     load_ms: number;
+    warm?: boolean;
     sdk_load?: Record<string, number>;
   }): void {
     this.write({
@@ -396,6 +418,10 @@ export class RunLogger {
 
   medbench(args: Omit<MedbenchEvent, "type" | "ts">): void {
     this.write({ type: "medbench", ts: new Date().toISOString(), ...args });
+  }
+
+  voiceTurn(args: Omit<VoiceTurnEvent, "type" | "ts">): void {
+    this.write({ type: "voice_turn", ts: new Date().toISOString(), ...args });
   }
 
   /** Latest event of a given type, for building the human-readable summary. */

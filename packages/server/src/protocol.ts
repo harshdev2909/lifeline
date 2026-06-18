@@ -47,7 +47,12 @@ export interface TurnRequest {
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
-  | { type: "cancel"; turnId: string };
+  | { type: "cancel"; turnId: string }
+  | { type: "voice_start"; options?: TurnOptions }
+  | { type: "voice_stop" };
+
+/** Live-voice turn-taking states (see the voice surface). */
+export type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "interrupted";
 
 // --- server → client ---------------------------------------------------------
 
@@ -151,7 +156,7 @@ export type ServerEvent =
   | { type: "safety"; turnId: string; redFlag: boolean; terms: string[]; grounded: boolean; action: string }
   | { type: "injection"; turnId: string; source: string; detected: boolean; patterns: string[] }
   | { type: "emergency"; turnId: string; notice: string }
-  | { type: "served_by"; turnId: string; servedBy: "local" | "remote"; peerKey?: string; transportMs?: number; fallback?: boolean; reason?: string }
+  | { type: "served_by"; turnId: string; servedBy: "local" | "remote"; peerKey?: string; transportMs?: number; warm?: boolean; fallback?: boolean; reason?: string }
   | { type: "route"; turnId: string; candidates: PeerProbeWire[]; chosen?: string; servedBy: "local" | "remote" }
   | { type: "thinking"; turnId: string; delta: string }
   | { type: "thinking_done"; turnId: string; ms: number; chars: number }
@@ -162,4 +167,10 @@ export type ServerEvent =
   | { type: "audio"; turnId: string; url: string }
   | { type: "refusal"; turnId: string; text: string; disclaimer: string }
   | { type: "done"; turnId: string; answer: string; disclaimer: string; evidence: string }
-  | { type: "error"; turnId: string; message: string };
+  | { type: "error"; turnId: string; message: string }
+  // --- live voice (binary frames carry PCM: mic in, TTS out) ---
+  | { type: "voice_state"; state: VoiceState; mode: "live" | "turn-based"; detail?: string }
+  | { type: "voice_level"; speaking: boolean; level: number }
+  | { type: "voice_user"; turnId: string; text: string }
+  | { type: "voice_tts"; turnId: string; status: "start" | "end"; sampleRate?: number; bargedIn?: boolean }
+  | { type: "voice_error"; message: string };

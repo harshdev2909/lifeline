@@ -99,6 +99,16 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(4px)" },
           to: { opacity: "1", transform: "translateY(0)" },
         },
+        // Centered dialog: keep the -50%/-50% centering transform across the whole
+        // animation so it never overrides the Tailwind centering classes.
+        "dialog-in": {
+          "0%": { opacity: "0", transform: "translate(-50%, -50%) scale(0.97)" },
+          "100%": { opacity: "1", transform: "translate(-50%, -50%) scale(1)" },
+        },
+        "overlay-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
@@ -107,6 +117,8 @@ const config: Config = {
         breathe: "breathe 3.2s ease-in-out infinite",
         "pulse-ring": "pulse-ring 2.4s ease-out infinite",
         "fade-up": "fade-up 240ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "dialog-in": "dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "overlay-in": "overlay-in 160ms ease",
         shimmer: "shimmer 1.6s infinite",
       },
     },
