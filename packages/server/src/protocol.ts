@@ -257,6 +257,8 @@ export interface MeshSnapshot {
   relays: { count: number; keys: string[] };
   /** The most recent routing decision, for the explainable readout. */
   lastDecision?: RouteDecision;
+  /** Incident reports handed off to a reviewer device (app-layer, bridge-brokered). */
+  caseHandoffs?: { count: number; lastAt?: string; lastTo?: string };
 }
 
 export interface ServerSettings {

@@ -91,7 +91,23 @@ export {
 } from "./safety";
 export type { SafetyAction, SafetyResult } from "./safety";
 
-export { RunLogger } from "./logger";
+export {
+  buildIncident,
+  incidentSummary,
+  incidentToMarkdown,
+  incidentToJson,
+  severityOf,
+} from "./incident";
+export type {
+  IncidentReport,
+  IncidentInput,
+  IncidentEntry,
+  IncidentCitation,
+  IncidentSummary,
+  IncidentSeverity,
+} from "./incident";
+
+export { RunLogger, evidenceDir } from "./logger";
 export type {
   BenchEvent,
   BenchRow,

@@ -1,4 +1,4 @@
-import { Check, Copy, Cpu, Loader2, Plus, Radio, Server, Trash2, Wifi } from "lucide-react";
+import { Check, ClipboardList, Copy, Cpu, Loader2, Plus, Radio, Server, Trash2, Wifi } from "lucide-react";
 import { useState } from "react";
 
 import { putSettings, startProvider, stopProvider } from "../../lib/api";
@@ -163,6 +163,20 @@ export function MeshControls() {
           </p>
         )}
       </Section>
+
+      {/* Case handoffs — incident reports handed to a reviewer (app-layer, bridge-brokered). */}
+      {mesh.caseHandoffs && (
+        <Section icon={ClipboardList} title="Case handoffs">
+          {mesh.caseHandoffs.count > 0 ? (
+            <p className="text-2xs text-fg-muted">
+              {mesh.caseHandoffs.count} report{mesh.caseHandoffs.count > 1 ? "s" : ""} handed to a reviewer
+              {mesh.caseHandoffs.lastTo ? ` · last: ${mesh.caseHandoffs.lastTo}` : ""}
+            </p>
+          ) : (
+            <p className="text-2xs text-fg-faint">No cases handed off yet. Hand one off from Incident reports.</p>
+          )}
+        </Section>
+      )}
 
       {/* Last routing decision — explainable, from real probe results. */}
       {mesh.lastDecision && (

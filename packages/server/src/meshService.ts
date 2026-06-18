@@ -12,6 +12,7 @@ import { lookup } from "node:dns/promises";
 import { collectSysInfo, probePeers, closeSdkWorker, type PeerProbe } from "@lifeline/core";
 
 import { getSettings, MODEL_REGISTRY } from "./config";
+import { handoffSummary } from "./incidentStore";
 import { getLastDecision, getServed } from "./peerStats";
 import { providerStatus } from "./providerService";
 import type { MeshSnapshot, MeshPeer } from "./protocol";
@@ -84,19 +85,19 @@ function peerNodes(probes?: PeerProbe[]): MeshPeer[] {
 /** A snapshot without probing (fast; peer status is "unknown"). */
 export async function buildMeshSnapshot(): Promise<MeshSnapshot> {
   const internet = await checkInternet();
-  return { self: selfNode(), peers: peerNodes(), internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
+  return { self: selfNode(), peers: peerNodes(), internet, relays: relaySnapshot(), lastDecision: getLastDecision(), caseHandoffs: handoffSummary() };
 }
 
 /** A snapshot with real liveness — heartbeats every configured peer. */
 export async function probeMesh(): Promise<MeshSnapshot> {
   const settings = getSettings();
   const internet = await checkInternet();
-  if (!settings.peers.length) return { self: selfNode(), peers: [], internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
+  if (!settings.peers.length) return { self: selfNode(), peers: [], internet, relays: relaySnapshot(), lastDecision: getLastDecision(), caseHandoffs: handoffSummary() };
   try {
     const probes = await probePeers(settings.peers.map((p) => p.key), {
       labels: Object.fromEntries(settings.peers.map((p) => [p.key, p.label])),
     });
-    return { self: selfNode(), peers: peerNodes(probes), internet, relays: relaySnapshot(), lastDecision: getLastDecision() };
+    return { self: selfNode(), peers: peerNodes(probes), internet, relays: relaySnapshot(), lastDecision: getLastDecision(), caseHandoffs: handoffSummary() };
   } finally {
     await closeSdkWorker();
   }

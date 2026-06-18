@@ -17,10 +17,11 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 
-import { collectSysInfo } from "@lifeline/core";
+import { collectSysInfo, incidentToJson, incidentToMarkdown, type IncidentInput } from "@lifeline/core";
 
 import { getSettings, isModelKey, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
 import { engineManager } from "./engineManager";
+import { createIncident, getIncident, handoffIncident, listIncidents } from "./incidentStore";
 import { buildMeshSnapshot, probeMesh } from "./meshService";
 import { providerStatus, startProvider, stopProvider } from "./providerService";
 import type { ServerSettings } from "./protocol";
@@ -40,6 +41,10 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
   ".webmanifest": "application/manifest+json",
 };
+
+function safeName(s: string): string {
+  return s.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60) || "report";
+}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const s = JSON.stringify(body);
@@ -135,6 +140,51 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     }
     if (path === "/api/provider/stop" && req.method === "POST") {
       return json(res, 200, await tracked(() => stopProvider())), true;
+    }
+
+    // --- Incident reports (the emergency artifact) ---
+    if (path === "/api/incidents" && req.method === "GET") return json(res, 200, listIncidents()), true;
+    if (path === "/api/incidents" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}") as Partial<IncidentInput>;
+      if (!Array.isArray(body.entries) || body.entries.length === 0) return json(res, 400, { error: "an incident needs at least one exchange" }), true;
+      const input: IncidentInput = {
+        id: body.id || `inc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: body.createdAt || new Date().toISOString(),
+        location: body.location,
+        model: body.model || "unknown",
+        servedBy: body.servedBy === "remote" ? "remote" : "local",
+        entries: body.entries,
+        evidence: Array.isArray(body.evidence) ? body.evidence : [],
+      };
+      return json(res, 200, createIncident(input)), true;
+    }
+    if (path.startsWith("/api/incidents/")) {
+      const rest = path.slice("/api/incidents/".length);
+      const [id, action] = rest.split("/");
+      const decoded = decodeURIComponent(id);
+      if (!action && req.method === "GET") {
+        const r = getIncident(decoded);
+        return r ? (json(res, 200, r), true) : (json(res, 404, { error: "no such incident" }), true);
+      }
+      if (action === "handoff" && req.method === "POST") {
+        const body = JSON.parse((await readBody(req)).toString("utf8") || "{}") as { to?: string };
+        const r = handoffIncident(decoded, body.to ?? "");
+        return r ? (json(res, 200, r), true) : (json(res, 404, { error: "no such incident" }), true);
+      }
+      if (action === "export" && req.method === "GET") {
+        const r = getIncident(decoded);
+        if (!r) return json(res, 404, { error: "no such incident" }), true;
+        const fmt = url.searchParams.get("format") === "json" ? "json" : "md";
+        const body = fmt === "json" ? incidentToJson(r) : incidentToMarkdown(r);
+        const filename = `incident-${safeName(decoded)}.${fmt}`;
+        res.writeHead(200, {
+          "content-type": fmt === "json" ? "application/json; charset=utf-8" : "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="${filename}"`,
+          "content-length": Buffer.byteLength(body),
+        });
+        res.end(body);
+        return true;
+      }
     }
 
     if (path === "/api/upload" && req.method === "POST") {

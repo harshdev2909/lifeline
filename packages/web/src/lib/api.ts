@@ -3,7 +3,7 @@
  * only. The WebSocket (see state/bridge.tsx) carries the streaming turns; this
  * covers settings, the mesh snapshot/probe, uploads, and audio.
  */
-import type { MeshSnapshot, ModelKey, ServerSettings } from "./protocol";
+import type { IncidentInput, IncidentReport, IncidentSummary, MeshSnapshot, ModelKey, ServerSettings } from "./protocol";
 
 async function jsonReq<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -76,4 +76,34 @@ export async function uploadFile(kind: UploadResult["kind"], data: Blob, name: s
     },
     body: data,
   });
+}
+
+// --- Incident reports ---
+export function listIncidents(): Promise<IncidentSummary[]> {
+  return jsonReq<IncidentSummary[]>("/api/incidents");
+}
+
+export function getIncident(id: string): Promise<IncidentReport> {
+  return jsonReq<IncidentReport>(`/api/incidents/${encodeURIComponent(id)}`);
+}
+
+export function createIncident(input: IncidentInput): Promise<IncidentReport> {
+  return jsonReq<IncidentReport>("/api/incidents", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function handoffIncident(id: string, to: string): Promise<IncidentReport> {
+  return jsonReq<IncidentReport>(`/api/incidents/${encodeURIComponent(id)}/handoff`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ to }),
+  });
+}
+
+/** Same-origin download URL for an incident export (md | json). */
+export function incidentExportUrl(id: string, format: "md" | "json"): string {
+  return `/api/incidents/${encodeURIComponent(id)}/export?format=${format}`;
 }

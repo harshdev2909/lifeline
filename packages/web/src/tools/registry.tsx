@@ -10,13 +10,14 @@
  */
 import type { ComponentType } from "react";
 
-import { Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
+import { ClipboardList, Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { AdaptTool } from "../components/tools/AdaptTool";
 import { ClassifyTool } from "../components/tools/ClassifyTool";
 import { CorpusTool } from "../components/tools/CorpusTool";
 import { IllustrateTool } from "../components/tools/IllustrateTool";
+import { IncidentsTool } from "../components/tools/IncidentsTool";
 import { VideoTool } from "../components/tools/VideoTool";
 import { DictateTool } from "../components/tools/DictateTool";
 import { OcrTool } from "../components/tools/OcrTool";
@@ -27,7 +28,7 @@ import { TranslateTool } from "../components/tools/TranslateTool";
 import { VisionTool } from "../components/tools/VisionTool";
 import { NetworkTool } from "../components/workspace/NetworkTool";
 
-export type ToolGroupId = "converse" | "see" | "read" | "listen" | "knowledge" | "adapt" | "network";
+export type ToolGroupId = "converse" | "see" | "read" | "listen" | "knowledge" | "records" | "adapt" | "network";
 
 /** Display order of the groups in the rail. */
 export const TOOL_GROUPS: { id: ToolGroupId; label: string }[] = [
@@ -36,6 +37,7 @@ export const TOOL_GROUPS: { id: ToolGroupId; label: string }[] = [
   { id: "read", label: "Read & Translate" },
   { id: "listen", label: "Listen & Speak" },
   { id: "knowledge", label: "Knowledge" },
+  { id: "records", label: "Records" },
   { id: "adapt", label: "Adapt" },
   { id: "network", label: "Network" },
 ];
@@ -151,6 +153,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Re-index the manual and inspect the chunks that ground answers",
     icon: Database,
     Component: CorpusTool,
+  },
+  {
+    id: "incidents",
+    group: "records",
+    label: "Incident reports",
+    blurb: "Structured triage records with citations — export, or hand to a reviewer",
+    icon: ClipboardList,
+    Component: IncidentsTool,
   },
   {
     id: "adapt",

@@ -297,6 +297,29 @@ export interface FinetuneEvent {
   adapter_path?: string;
   train_ms: number;
 }
+export interface IncidentEvent {
+  type: "incident";
+  ts: string;
+  incident_id: string;
+  severity: "emergency" | "urgent" | "routine";
+  entry_count: number;
+  model: string;
+  served_by: "local" | "remote";
+  location: boolean;
+  /** Set when the report was handed off to a reviewer device. */
+  handoff_to?: string;
+}
+export interface ConstrainedLinkEvent {
+  type: "constrained_link";
+  ts: string;
+  /** The per-message byte budget the channel was held to. */
+  byte_budget: number;
+  total_bytes: number;
+  chunks: number;
+  retries: number;
+  /** Bytes the terse answer saved versus the full answer. */
+  full_bytes?: number;
+}
 export interface VoiceTurnEvent {
   type: "voice_turn";
   ts: string;
@@ -337,11 +360,14 @@ export type EvidenceEvent =
   | ImageGenEvent
   | VideoGenEvent
   | FinetuneEvent
+  | IncidentEvent
+  | ConstrainedLinkEvent
   | VisionEvent
   | TtsEvent
   | MedbenchEvent;
 
-function defaultEvidenceDir(): string {
+/** The on-disk evidence directory (overridable via LIFELINE_EVIDENCE_DIR). */
+export function evidenceDir(): string {
   if (process.env.LIFELINE_EVIDENCE_DIR) return process.env.LIFELINE_EVIDENCE_DIR;
   // this file: <repo>/packages/core/src/logger.ts  ->  <repo>/evidence
   const here = dirname(fileURLToPath(import.meta.url));
@@ -356,7 +382,7 @@ export class RunLogger {
   constructor(opts: { dir?: string; runId?: string } = {}) {
     const startedAt = new Date().toISOString();
     this.runId = opts.runId ?? startedAt;
-    const dir = opts.dir ?? defaultEvidenceDir();
+    const dir = opts.dir ?? evidenceDir();
     mkdirSync(dir, { recursive: true });
     const safe = startedAt.replace(/[:.]/g, "-");
     this.path = join(dir, `run-${safe}.jsonl`);
@@ -481,6 +507,14 @@ export class RunLogger {
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {
     this.write({ type: "tts", ts: new Date().toISOString(), ...args });
+  }
+
+  incident(args: Omit<IncidentEvent, "type" | "ts">): void {
+    this.write({ type: "incident", ts: new Date().toISOString(), ...args });
+  }
+
+  constrainedLink(args: Omit<ConstrainedLinkEvent, "type" | "ts">): void {
+    this.write({ type: "constrained_link", ts: new Date().toISOString(), ...args });
   }
 
   medbench(args: Omit<MedbenchEvent, "type" | "ts">): void {

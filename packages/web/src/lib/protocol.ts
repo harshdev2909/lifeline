@@ -220,6 +220,61 @@ export interface MeshSnapshot {
   internet: boolean;
   relays: { count: number; keys: string[] };
   lastDecision?: RouteDecision;
+  /** Incident reports handed off to a reviewer device (app-layer, bridge-brokered). */
+  caseHandoffs?: { count: number; lastAt?: string; lastTo?: string };
+}
+
+// --- Incident reports (the emergency artifact) -------------------------------
+export type IncidentSeverity = "emergency" | "urgent" | "routine";
+
+export interface IncidentCitation {
+  tag: string;
+  source: string;
+  section: string;
+  score: number;
+  snippet: string;
+}
+
+export interface IncidentEntry {
+  question: string;
+  guidance: string;
+  citations: IncidentCitation[];
+  redFlag: boolean;
+  redFlagTerms: string[];
+  lang: string;
+}
+
+export interface IncidentReport {
+  id: string;
+  createdAt: string;
+  location: string;
+  severity: IncidentSeverity;
+  model: string;
+  servedBy: "local" | "remote";
+  entries: IncidentEntry[];
+  evidence: string[];
+  disclaimer: string;
+  handoffTo?: string;
+  handoffAt?: string;
+}
+
+export interface IncidentInput {
+  id?: string;
+  createdAt?: string;
+  location?: string;
+  model: string;
+  servedBy?: "local" | "remote";
+  entries: IncidentEntry[];
+  evidence?: string[];
+}
+
+export interface IncidentSummary {
+  id: string;
+  createdAt: string;
+  severity: IncidentSeverity;
+  title: string;
+  entryCount: number;
+  handoffTo?: string;
 }
 
 export interface ServerSettings {

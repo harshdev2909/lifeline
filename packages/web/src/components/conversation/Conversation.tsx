@@ -6,6 +6,7 @@ import { VoiceSurface } from "../voice/VoiceSurface";
 import { AssistantMessage } from "./AssistantMessage";
 import { Composer } from "./Composer";
 import { EmptyState } from "./EmptyState";
+import { SaveIncident } from "./SaveIncident";
 import { UserMessage } from "./UserMessage";
 
 export function Conversation() {
@@ -39,6 +40,7 @@ export function Conversation() {
               <div key={ex.id} className="space-y-4">
                 <UserMessage m={ex.user} />
                 <AssistantMessage a={ex.assistant} />
+                <SaveIncident exchange={ex} />
               </div>
             ))}
             <div ref={bottomRef} className="h-1" />
