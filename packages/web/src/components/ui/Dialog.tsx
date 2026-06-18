@@ -24,11 +24,11 @@ export function Dialog({
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
-        <RD.Overlay className="fixed inset-0 z-40 bg-overlay backdrop-blur-[2px] data-[state=open]:animate-[fade-up_160ms_ease]" />
+        <RD.Overlay className="fixed inset-0 z-40 bg-overlay backdrop-blur-[2px] data-[state=open]:animate-overlay-in" />
         <RD.Content
           className={cn(
             "fixed left-1/2 top-1/2 z-50 flex max-h-[88vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col",
-            "rounded-2xl border border-hairline bg-surface shadow-pop focus:outline-none data-[state=open]:animate-fade-up",
+            "rounded-2xl border border-hairline bg-surface shadow-pop focus:outline-none data-[state=open]:animate-dialog-in",
             wide ? "max-w-2xl" : "max-w-lg",
           )}
         >
