@@ -96,14 +96,19 @@ function newestAdapter(dir: string): string | undefined {
 
 /** One single-turn completion, optionally with a LoRA adapter applied. */
 async function answerOnce(loraPath: string | undefined, prompt: string): Promise<string> {
+  // Qwen3-0.6B is a reasoning model; give generous context and bound generation
+  // so the (thinking + answer) stream can't overflow a tight window.
   const modelId = await loadModel({
     modelSrc: QWEN3_600M_INST_Q4,
-    modelConfig: { device: "gpu", ctx_size: 512, ...(loraPath ? { lora: loraPath } : {}) },
+    modelConfig: { device: "gpu", ctx_size: 2048, predict: 512, ...(loraPath ? { lora: loraPath } : {}) },
   } as unknown as LoadModelOptions);
   try {
-    const run = completion({ modelId, history: [{ role: "user", content: prompt }], stream: false } as unknown as Parameters<typeof completion>[0]);
+    // /no_think asks Qwen3 to answer directly (this 0.6B model otherwise spends
+    // its whole budget reasoning); strip any residual think tags defensively.
+    const run = completion({ modelId, history: [{ role: "user", content: `${prompt} /no_think` }], stream: false, kvCache: false } as unknown as Parameters<typeof completion>[0]);
     const final = await run.final;
-    return (final.contentText ?? "").trim();
+    const clean = (final.contentText ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").replace(/<\/?think>/g, "").trim();
+    return clean || "(no direct answer within the token budget)";
   } finally {
     await unloadModel({ modelId }).catch(() => {});
   }
@@ -151,6 +156,10 @@ export async function runAdaptation(opts: AdaptOptions = {}): Promise<AdaptResul
         validation: { type: "dataset", path: evalPath },
         outputParametersDir: outDir,
         numberOfEpochs: epochs,
+        // An explicit LR is required: without it the scheduler can drive AdamW's
+        // alpha to 0 and ggml asserts (adamw.alpha > 0). Matches the SDK example.
+        learningRate: 1e-4,
+        lrMin: 1e-8,
         loraModules: "attn_q,attn_k,attn_v,attn_o,ffn_gate,ffn_up,ffn_down",
         assistantLossOnly: true,
       },
