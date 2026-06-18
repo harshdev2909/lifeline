@@ -31,7 +31,11 @@ export interface TurnRequest {
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
-  | { type: "cancel"; turnId: string };
+  | { type: "cancel"; turnId: string }
+  | { type: "voice_start"; options?: TurnOptions }
+  | { type: "voice_stop" };
+
+export type VoiceState = "idle" | "listening" | "thinking" | "speaking" | "interrupted";
 
 export type TurnStage =
   | "stt"
@@ -139,7 +143,12 @@ export type ServerEvent =
   | { type: "audio"; turnId: string; url: string }
   | { type: "refusal"; turnId: string; text: string; disclaimer: string }
   | { type: "done"; turnId: string; answer: string; disclaimer: string; evidence: string }
-  | { type: "error"; turnId: string; message: string };
+  | { type: "error"; turnId: string; message: string }
+  | { type: "voice_state"; state: VoiceState; mode: "live" | "turn-based"; detail?: string }
+  | { type: "voice_level"; speaking: boolean; level: number }
+  | { type: "voice_user"; turnId: string; text: string }
+  | { type: "voice_tts"; turnId: string; status: "start" | "end"; sampleRate?: number; bargedIn?: boolean }
+  | { type: "voice_error"; message: string };
 
 export const MODEL_NOTES: Record<ModelKey, string> = {
   medgemma4b: "Medical · direct answers · fast",

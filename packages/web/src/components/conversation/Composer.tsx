@@ -7,6 +7,7 @@ import { uploadFile } from "../../lib/api";
 import type { Lang, ModelKey, TurnAttachment } from "../../lib/protocol";
 import { startRecording, type Recorder } from "../../lib/recorder";
 import { useBridge } from "../../state/bridge";
+import { VoiceStartButton } from "../voice/VoiceSurface";
 import { IconButton } from "../ui/Button";
 import { Select } from "../ui/Field";
 import { Tooltip } from "../ui/Tooltip";
@@ -184,10 +185,16 @@ export function Composer() {
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
 
-              <Tooltip content={recorder ? "Stop" : "Ask by voice"}>
-                <IconButton label="Ask by voice" onClick={toggleRecording} tone="accent" active={Boolean(recorder)}>
+              <Tooltip content={recorder ? "Stop" : "Record one question"}>
+                <IconButton label="Record one question" onClick={toggleRecording} tone="accent" active={Boolean(recorder)}>
                   <Mic className="h-[18px] w-[18px]" />
                 </IconButton>
+              </Tooltip>
+
+              <Tooltip content="Hands-free live conversation">
+                <span>
+                  <VoiceStartButton />
+                </span>
               </Tooltip>
 
               <div className="mx-1 h-5 w-px bg-hairline" />

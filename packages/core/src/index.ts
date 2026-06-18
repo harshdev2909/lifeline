@@ -93,6 +93,7 @@ export type {
   RoutingEvent,
   SdkProfileEvent,
   SessionEvent,
+  VoiceTurnEvent,
 } from "./logger";
 
 export { collectSysInfo, formatSysInfoTable } from "./sysinfo";

@@ -22,8 +22,10 @@ import type {
   MeshSnapshot,
   ServerEvent,
   ServerSettings,
+  TurnOptions,
   TurnRequest,
 } from "../lib/protocol";
+import { PcmPlayer, startMic, type MicStream } from "../lib/voiceAudio";
 import {
   emptyAssistant,
   type AssistantMsg,
@@ -38,6 +40,7 @@ type Action =
   | { kind: "mesh"; mesh: MeshSnapshot }
   | { kind: "settings"; settings: ServerSettings }
   | { kind: "open-turn"; id: string; user: UserMsg }
+  | { kind: "voice-active"; active: boolean }
   | { kind: "event"; ev: ServerEvent };
 
 const initial: BridgeState = {
@@ -47,6 +50,7 @@ const initial: BridgeState = {
   mesh: null,
   exchanges: [],
   meshPulse: 0,
+  voice: { active: false, state: "idle", level: 0, speaking: false, mode: "live" },
 };
 
 function patchAssistant(state: BridgeState, turnId: string, fn: (a: AssistantMsg) => AssistantMsg): BridgeState {
@@ -73,6 +77,8 @@ function reducer(state: BridgeState, action: Action): BridgeState {
       const ex: Exchange = { id: action.id, user: action.user, assistant: emptyAssistant() };
       return { ...state, exchanges: [...state.exchanges, ex] };
     }
+    case "voice-active":
+      return { ...state, voice: { ...state.voice, active: action.active, state: action.active ? state.voice.state : "idle", level: 0, speaking: false } };
     case "event":
       return applyEvent(state, action.ev);
     default:
@@ -140,6 +146,22 @@ function applyEvent(state: BridgeState, ev: ServerEvent): BridgeState {
       }));
     case "error":
       return patchAssistant(state, ev.turnId, (a) => ({ ...a, status: "error", error: ev.message, thinkingActive: false }));
+    case "voice_state":
+      return { ...state, voice: { ...state.voice, state: ev.state, mode: ev.mode } };
+    case "voice_level":
+      return { ...state, voice: { ...state.voice, level: ev.level, speaking: ev.speaking } };
+    case "voice_user": {
+      // A spoken turn becomes a normal exchange so it renders like a typed one.
+      const ex: Exchange = {
+        id: ev.turnId,
+        user: { text: ev.text, transcript: ev.text, attachments: [], options: {} },
+        assistant: { ...emptyAssistant(), status: "streaming" },
+      };
+      return { ...state, exchanges: [...state.exchanges, ex] };
+    }
+    case "voice_tts":
+    case "voice_error":
+      return state; // audio + errors handled as side effects in the socket handler
     default:
       return state;
   }
@@ -161,6 +183,8 @@ interface BridgeContextValue extends BridgeState {
   cancel(turnId: string): void;
   applySettings(settings: ServerSettings): void;
   refreshMesh(): Promise<void>;
+  startVoice(options: TurnOptions): Promise<void>;
+  stopVoice(): void;
   busy: boolean;
 }
 
@@ -176,6 +200,8 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedByUs = useRef(false);
+  const playerRef = useRef<PcmPlayer | null>(null);
+  const micRef = useRef<MicStream | null>(null);
 
   useEffect(() => {
     closedByUs.current = false;
@@ -184,20 +210,32 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
     const connect = () => {
       dispatch({ kind: "status", status: "connecting" });
       const ws = new WebSocket(wsUrl());
+      ws.binaryType = "arraybuffer";
       wsRef.current = ws;
       ws.onopen = () => {
         attempts = 0;
         dispatch({ kind: "status", status: "open" });
       };
       ws.onmessage = (e) => {
+        // Binary frames are streamed TTS PCM — feed the player directly.
+        if (e.data instanceof ArrayBuffer) {
+          playerRef.current?.enqueue(e.data);
+          return;
+        }
         let ev: ServerEvent;
         try {
           ev = JSON.parse(e.data);
         } catch {
           return;
         }
-        if (ev.type === "hello") dispatch({ kind: "hello", ev });
-        else dispatch({ kind: "event", ev });
+        if (ev.type === "hello") {
+          dispatch({ kind: "hello", ev });
+          return;
+        }
+        // Stop playback promptly on barge-in / session end.
+        if (ev.type === "voice_state" && (ev.state === "interrupted" || ev.state === "idle")) playerRef.current?.stop();
+        if (ev.type === "voice_tts" && ev.status === "end" && ev.bargedIn) playerRef.current?.stop();
+        dispatch({ kind: "event", ev });
       };
       ws.onclose = () => {
         dispatch({ kind: "status", status: "closed" });
@@ -213,6 +251,10 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
     return () => {
       closedByUs.current = true;
       if (retryRef.current) clearTimeout(retryRef.current);
+      micRef.current?.stop();
+      micRef.current = null;
+      playerRef.current?.dispose();
+      playerRef.current = null;
       wsRef.current?.close();
     };
   }, []);
@@ -234,6 +276,35 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   );
 
   const cancel = useCallback((turnId: string) => send({ type: "cancel", turnId }), [send]);
+
+  const startVoice = useCallback(
+    async (options: TurnOptions) => {
+      if (micRef.current) return;
+      if (!playerRef.current) playerRef.current = new PcmPlayer(44100);
+      try {
+        // Capture the mic FIRST (this prompts for permission); stream each frame up.
+        micRef.current = await startMic((frame) => {
+          const ws = wsRef.current;
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(frame);
+        });
+      } catch {
+        dispatch({ kind: "event", ev: { type: "voice_error", message: "Microphone unavailable — check permissions." } });
+        return;
+      }
+      send({ type: "voice_start", options });
+      dispatch({ kind: "voice-active", active: true });
+    },
+    [send],
+  );
+
+  const stopVoice = useCallback(() => {
+    micRef.current?.stop();
+    micRef.current = null;
+    playerRef.current?.stop();
+    send({ type: "voice_stop" });
+    dispatch({ kind: "voice-active", active: false });
+  }, [send]);
+
   const applySettings = useCallback((settings: ServerSettings) => dispatch({ kind: "settings", settings }), []);
   const refreshMesh = useCallback(async () => {
     const mesh = await apiProbeMesh();
@@ -243,8 +314,8 @@ export function BridgeProvider({ children }: { children: ReactNode }) {
   const busy = state.exchanges.some((ex) => ex.assistant.status === "pending" || ex.assistant.status === "streaming");
 
   const value = useMemo<BridgeContextValue>(
-    () => ({ ...state, sendTurn, cancel, applySettings, refreshMesh, busy }),
-    [state, sendTurn, cancel, applySettings, refreshMesh, busy],
+    () => ({ ...state, sendTurn, cancel, applySettings, refreshMesh, startVoice, stopVoice, busy }),
+    [state, sendTurn, cancel, applySettings, refreshMesh, startVoice, stopVoice, busy],
   );
 
   return <BridgeContext.Provider value={value}>{children}</BridgeContext.Provider>;

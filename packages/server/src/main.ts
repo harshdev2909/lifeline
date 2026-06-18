@@ -20,6 +20,7 @@ import { runTurn } from "./orchestrator";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import { tracked } from "./serialize";
 import { cleanupUploads } from "./uploads";
+import { VoiceSession } from "./voice";
 
 setupQvacEnv();
 
@@ -33,10 +34,23 @@ function send(ws: WebSocket, ev: ServerEvent): void {
 wss.on("connection", (ws) => {
   // Per-connection turn registry, so `cancel` can abort the right turn.
   const turns = new Map<string, AbortController>();
+  // Live voice loop for this connection (binary frames carry PCM both ways).
+  const voice = new VoiceSession(
+    (ev) => send(ws, ev),
+    (pcm) => {
+      if (ws.readyState === ws.OPEN) ws.send(pcm, { binary: true });
+    },
+  );
 
   // Attach listeners synchronously FIRST — the client sends `start` as soon as
   // the socket opens, and any await here would drop that message.
-  ws.on("message", (raw) => {
+  ws.on("message", (raw, isBinary) => {
+    // Binary frames are mic PCM for the voice loop.
+    if (isBinary) {
+      voice.audio(raw as Buffer);
+      return;
+    }
+
     let msg: ClientMessage;
     try {
       msg = JSON.parse(raw.toString());
@@ -44,27 +58,34 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg.type === "cancel") {
-      turns.get(msg.turnId)?.abort();
-      return;
-    }
-
-    if (msg.type === "start") {
-      const turn = msg.turn;
-      const controller = new AbortController();
-      turns.set(turn.id, controller);
-      send(ws, { type: "turn_accepted", turnId: turn.id });
-
-      // Serialize against other turns/probes; stream events as they happen.
-      tracked(() => runTurn(turn, (ev) => send(ws, ev), controller.signal))
-        .catch((err) => send(ws, { type: "error", turnId: turn.id, message: err instanceof Error ? err.message : String(err) }))
-        .finally(() => turns.delete(turn.id));
+    switch (msg.type) {
+      case "cancel":
+        turns.get(msg.turnId)?.abort();
+        break;
+      case "voice_start":
+        void voice.start(msg.options ?? {});
+        break;
+      case "voice_stop":
+        void voice.stop();
+        break;
+      case "start": {
+        const turn = msg.turn;
+        const controller = new AbortController();
+        turns.set(turn.id, controller);
+        send(ws, { type: "turn_accepted", turnId: turn.id });
+        // Serialize against other turns/probes; stream events as they happen.
+        tracked(() => runTurn(turn, (ev) => send(ws, ev), controller.signal))
+          .catch((err) => send(ws, { type: "error", turnId: turn.id, message: err instanceof Error ? err.message : String(err) }))
+          .finally(() => turns.delete(turn.id));
+        break;
+      }
     }
   });
 
   ws.on("close", () => {
     for (const c of turns.values()) c.abort();
     turns.clear();
+    void voice.stop();
   });
 
   // Now greet the client (mesh snapshot may probe internet reachability, so this

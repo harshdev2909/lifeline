@@ -2,13 +2,14 @@ import { useEffect, useRef } from "react";
 
 import { useBridge } from "../../state/bridge";
 import { DisclaimerBar } from "../chrome/DisclaimerBar";
+import { VoiceSurface } from "../voice/VoiceSurface";
 import { AssistantMessage } from "./AssistantMessage";
 import { Composer } from "./Composer";
 import { EmptyState } from "./EmptyState";
 import { UserMessage } from "./UserMessage";
 
 export function Conversation() {
-  const { exchanges, sendTurn, settings } = useBridge();
+  const { exchanges, sendTurn, settings, voice } = useBridge();
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastLen = exchanges.at(-1)?.assistant.answer.length ?? 0;
 
@@ -47,7 +48,7 @@ export function Conversation() {
 
       <div className="border-t border-hairline bg-[color-mix(in_srgb,var(--bg-base)_82%,transparent)] backdrop-blur">
         <div className="mx-auto w-full max-w-reading px-4 py-3">
-          <Composer />
+          {voice.active ? <VoiceSurface /> : <Composer />}
           <DisclaimerBar />
         </div>
       </div>
