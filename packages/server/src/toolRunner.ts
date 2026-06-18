@@ -9,6 +9,7 @@
  * @qvac/sdk. Transient models (OCR, vision, SOAP, embeddings) load and unload on
  * the shared worker WITHOUT disposing it, so the warm conversation slot survives.
  */
+import { writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
 import {
@@ -19,6 +20,7 @@ import {
   detectInjection,
   extractText,
   generateIllustration,
+  generateVideo,
   KnowledgeBase,
   labelSetById,
   matchLabel,
@@ -69,6 +71,8 @@ export async function runTool(req: ToolRunRequest, emit: Emit, signal: AbortSign
       return runIllustrate(req, emit, signal);
     case "adapt":
       return runAdapt(req, emit, signal);
+    case "video":
+      return runVideo(req, emit, signal);
     default:
       throw new Error(`Unknown tool: ${String((req as { tool: string }).tool)}`);
   }
@@ -538,6 +542,64 @@ async function runIllustrate(req: ToolRunRequest, emit: Emit, signal: AbortSigna
     },
   });
   emit({ type: "tool_done", runId, output: { tool: "illustrate", dataUrl, width: r.width, height: r.height, steps: r.steps, seed: r.seed, prompt: subject }, evidence: logger.path });
+}
+
+/**
+ * Generate a short instructional first-aid motion clip on-device (Wan 2.1 T2V).
+ * Heavy: ~14.5 GB of weights and minutes per clip. Framed as an illustrative
+ * demonstration only. No ffmpeg here, so the output is an AVI for download.
+ */
+async function runVideo(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Promise<void> {
+  const runId = req.runId;
+  const subject = str(req, "prompt").trim();
+  if (!subject) throw new Error("Describe the first-aid action to animate.");
+  const frames = num(req, "frames") ?? 17;
+
+  const logger = new RunLogger();
+  logger.session("ui (video tool)", collectSysInfo());
+  emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: "Loading Wan 2.1 (this is large)…" });
+
+  const prompt = `simple instructional first-aid demonstration, clean flat line-art animation, neutral palette, no text: ${subject}`;
+  let genStarted = false;
+  const r = await generateVideo(prompt, {
+    frames,
+    onProgress: (p) => emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: p.phase, progress: p.progress }),
+    onStep: (step, total) => {
+      if (!genStarted) {
+        genStarted = true;
+        emit({ type: "tool_stage", runId, stage: "load", status: "done" });
+      }
+      emit({ type: "tool_stage", runId, stage: "generate", status: "start", detail: `frame pass ${step}/${total}`, progress: total ? step / total : undefined });
+    },
+  });
+  if (signal.aborted) return;
+
+  logger.videoGen({ model: r.model, prompt: subject, width: r.width, height: r.height, frames: r.frames, fps: r.fps, steps: r.steps, seed: r.seed, generation_ms: r.generation_ms });
+  const aviPath = logger.path.replace(/run-(.*)\.jsonl$/, "clip-$1.avi");
+  writeFileSync(aviPath, r.avi);
+  const f = registerFile(aviPath, "video", "video/x-msvideo");
+
+  emit({ type: "tool_stage", runId, stage: "generate", status: "done", ms: r.generation_ms });
+  emit({
+    type: "tool_telemetry",
+    runId,
+    telemetry: {
+      servedBy: "local",
+      metrics: [
+        { label: "model", value: "Wan2.1-1.3B", hint: r.model },
+        { label: "size", value: `${r.width}×${r.height}` },
+        { label: "frames", value: `${r.frames}@${r.fps}` },
+        { label: "gen", value: `${(r.generation_ms / 1000).toFixed(0)}s`, hint: "On-device generation time (measured)." },
+        ...(r.seed != null ? [{ label: "seed", value: String(r.seed) }] : []),
+      ],
+    },
+  });
+  emit({
+    type: "tool_done",
+    runId,
+    output: { tool: "video", url: `/api/media/${f.id}`, mime: "video/x-msvideo", playable: false, frames: r.frames, fps: r.fps, width: r.width, height: r.height, seed: r.seed, prompt: subject },
+    evidence: logger.path,
+  });
 }
 
 /**

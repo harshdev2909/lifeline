@@ -64,6 +64,9 @@ export type { ClassifyResult, ClassLabel, LabelSet } from "./classify";
 export { generateIllustration } from "./imagegen";
 export type { IllustrationResult, IllustrationOptions } from "./imagegen";
 
+export { generateVideo } from "./videogen";
+export type { VideoResult, VideoOptions } from "./videogen";
+
 export { runAdaptation, DEFAULT_ADAPT_PAIRS } from "./finetune";
 export type { AdaptResult, AdaptPair, AdaptProgress, AdaptOptions } from "./finetune";
 

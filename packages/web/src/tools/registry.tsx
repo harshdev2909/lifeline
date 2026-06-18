@@ -10,13 +10,14 @@
  */
 import type { ComponentType } from "react";
 
-import { Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
+import { Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { AdaptTool } from "../components/tools/AdaptTool";
 import { ClassifyTool } from "../components/tools/ClassifyTool";
 import { CorpusTool } from "../components/tools/CorpusTool";
 import { IllustrateTool } from "../components/tools/IllustrateTool";
+import { VideoTool } from "../components/tools/VideoTool";
 import { DictateTool } from "../components/tools/DictateTool";
 import { OcrTool } from "../components/tools/OcrTool";
 import { SearchTool } from "../components/tools/SearchTool";
@@ -94,6 +95,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Generate a simple instructional first-aid diagram — a teaching aid, on-device",
     icon: Sparkles,
     Component: IllustrateTool,
+  },
+  {
+    id: "video",
+    group: "see",
+    label: "Animate",
+    blurb: "Generate a short instructional motion clip on-device — heavy and slow, a teaching aid",
+    icon: Clapperboard,
+    Component: VideoTool,
   },
   {
     id: "ocr",

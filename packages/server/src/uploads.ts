@@ -18,7 +18,7 @@ mkdirSync(DIR, { recursive: true });
 export interface StoredFile {
   id: string;
   path: string;
-  kind: "image" | "ocr" | "audio" | "tts";
+  kind: "image" | "ocr" | "audio" | "tts" | "video";
   name: string;
   mime: string;
 }

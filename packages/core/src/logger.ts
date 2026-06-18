@@ -271,6 +271,19 @@ export interface MedbenchEvent {
   rows: MedbenchRow[];
 }
 
+export interface VideoGenEvent {
+  type: "video_gen";
+  ts: string;
+  model: string;
+  prompt: string;
+  width: number;
+  height: number;
+  frames: number;
+  fps: number;
+  steps: number;
+  seed?: number;
+  generation_ms: number;
+}
 export interface FinetuneEvent {
   type: "finetune";
   ts: string;
@@ -322,6 +335,7 @@ export type EvidenceEvent =
   | OcrEvent
   | ClassifyEvent
   | ImageGenEvent
+  | VideoGenEvent
   | FinetuneEvent
   | VisionEvent
   | TtsEvent
@@ -455,6 +469,10 @@ export class RunLogger {
 
   imageGen(args: Omit<ImageGenEvent, "type" | "ts">): void {
     this.write({ type: "image_gen", ts: new Date().toISOString(), ...args });
+  }
+
+  videoGen(args: Omit<VideoGenEvent, "type" | "ts">): void {
+    this.write({ type: "video_gen", ts: new Date().toISOString(), ...args });
   }
 
   finetune(args: Omit<FinetuneEvent, "type" | "ts">): void {

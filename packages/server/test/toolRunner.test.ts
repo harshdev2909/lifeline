@@ -58,3 +58,7 @@ test("the screening aid needs an image", async () => {
 test("the illustration tool needs a prompt", async () => {
   await assert.rejects(() => runTool({ runId: "i1", tool: "illustrate", params: { prompt: "" } }, noEmit, signal()), /Describe the first-aid step/);
 });
+
+test("the video tool needs a prompt", async () => {
+  await assert.rejects(() => runTool({ runId: "vd1", tool: "video", params: { prompt: "" } }, noEmit, signal()), /Describe the first-aid action/);
+});

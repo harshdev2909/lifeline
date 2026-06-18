@@ -148,8 +148,8 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
       return json(res, 200, { id: f.id, name: f.name, kind: f.kind }), true;
     }
 
-    if (path.startsWith("/api/audio/")) {
-      const id = path.slice("/api/audio/".length);
+    if (path.startsWith("/api/audio/") || path.startsWith("/api/media/")) {
+      const id = path.slice(path.indexOf("/", 5) + 1);
       const file = streamFile(id);
       if (!file) return json(res, 404, { error: "not found" }), true;
       res.writeHead(200, { "content-type": file.mime, "cache-control": "no-store" });

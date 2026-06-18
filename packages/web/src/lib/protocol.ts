@@ -41,7 +41,8 @@ export type ToolId =
   | "corpus"
   | "classify"
   | "illustrate"
-  | "adapt";
+  | "adapt"
+  | "video";
 
 export interface ToolUpload {
   role: string;
@@ -110,7 +111,8 @@ export type ToolOutput =
       baseAnswer: string;
       adaptedAnswer: string;
       model: string;
-    };
+    }
+  | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string };
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
