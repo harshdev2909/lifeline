@@ -137,7 +137,17 @@ export function DelegateToggle({ value, onChange, disabled }: { value: boolean; 
 }
 
 /** Click-or-drop image picker; uploads to the bridge and reports the upload + a preview URL. */
-export function ImagePicker({ kind, onReady }: { kind: "image" | "ocr"; onReady: (up: UploadResult | null, preview: string | null) => void }) {
+export function ImagePicker({
+  kind,
+  onReady,
+  title = "Add a photo",
+  hint = "Click to choose, or drop an image here · PNG or JPEG",
+}: {
+  kind: "image" | "ocr";
+  onReady: (up: UploadResult | null, preview: string | null) => void;
+  title?: string;
+  hint?: string;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -180,8 +190,8 @@ export function ImagePicker({ kind, onReady }: { kind: "image" | "ocr"; onReady:
       >
         {busy ? <Loader2 className="h-8 w-8 animate-spin text-accent" aria-hidden /> : <ImageUp className={cn("h-8 w-8", over ? "text-accent" : "text-fg-faint")} aria-hidden />}
         <div>
-          <div className="text-sm font-medium text-fg">Add a photo</div>
-          <div className="mt-1 text-xs text-fg-muted">Click to choose, or drop an image here · PNG or JPEG</div>
+          <div className="text-sm font-medium text-fg">{title}</div>
+          <div className="mt-1 text-xs text-fg-muted">{hint}</div>
         </div>
       </button>
       <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" onChange={(e) => void take(e.target.files?.[0])} />
