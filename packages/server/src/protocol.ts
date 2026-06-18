@@ -110,6 +110,13 @@ export interface DeviceInfo {
 
 export type MeshNodeStatus = "live" | "down" | "unknown" | "active";
 
+export interface PeerServedStats {
+  turns: number;
+  lastTtftMs?: number;
+  lastTps?: number;
+  lastAt?: number;
+}
+
 export interface MeshPeer {
   key: string;
   label: string;
@@ -118,6 +125,17 @@ export interface MeshPeer {
   status: MeshNodeStatus;
   probeMs?: number;
   error?: string;
+  /** Real served-turn history for this peer (only set once it has served a turn). */
+  served?: PeerServedStats;
+}
+
+/** Why the last turn routed where it did (real probe results → winner / fallback). */
+export interface RouteDecision {
+  candidates: PeerProbeWire[];
+  chosen?: string;
+  servedBy: "local" | "remote";
+  fallbackReason?: string;
+  at: number;
 }
 
 export interface MeshSnapshot {
@@ -128,10 +146,18 @@ export interface MeshSnapshot {
     platform: string;
     accel: string;
     online: boolean;
+    /** True when this device is serving a model to peers (provider mode). */
+    serving: boolean;
+    /** Advertised provider key (hex) when serving. */
+    publicKey?: string;
+    serveTopic?: string;
+    serveModel?: string;
   };
   peers: MeshPeer[];
   /** Whether the host has internet (DHT discovery); offline still serves locally. */
   internet: boolean;
+  /** The most recent routing decision, for the explainable readout. */
+  lastDecision?: RouteDecision;
 }
 
 export interface ServerSettings {

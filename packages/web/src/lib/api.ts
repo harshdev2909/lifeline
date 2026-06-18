@@ -3,7 +3,7 @@
  * only. The WebSocket (see state/bridge.tsx) carries the streaming turns; this
  * covers settings, the mesh snapshot/probe, uploads, and audio.
  */
-import type { MeshSnapshot, ServerSettings } from "./protocol";
+import type { MeshSnapshot, ModelKey, ServerSettings } from "./protocol";
 
 async function jsonReq<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -32,6 +32,31 @@ export function getMesh(): Promise<MeshSnapshot> {
 
 export function probeMesh(): Promise<MeshSnapshot> {
   return jsonReq<MeshSnapshot>("/api/mesh/probe", { method: "POST" });
+}
+
+export interface ProviderStatus {
+  serving: boolean;
+  publicKey?: string;
+  topic?: string;
+  model?: ModelKey;
+  modelLabel?: string;
+  error?: string;
+}
+
+export function getProvider(): Promise<ProviderStatus> {
+  return jsonReq<ProviderStatus>("/api/provider");
+}
+
+export function startProvider(topic: string, model: ModelKey): Promise<ProviderStatus> {
+  return jsonReq<ProviderStatus>("/api/provider/start", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ topic, model }),
+  });
+}
+
+export function stopProvider(): Promise<ProviderStatus> {
+  return jsonReq<ProviderStatus>("/api/provider/stop", { method: "POST" });
 }
 
 export interface UploadResult {

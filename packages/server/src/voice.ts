@@ -41,6 +41,7 @@ import {
 
 import { getSettings, isModelKey } from "./config";
 import { engineManager } from "./engineManager";
+import { recordDecision, recordServed } from "./peerStats";
 import type { ServerEvent, SourceChip, TurnOptions, VoiceState } from "./protocol";
 import { tracked } from "./serialize";
 
@@ -320,6 +321,11 @@ export class VoiceSession {
     const sdk: CompletionStats | null = engine.lastStats?.() ?? null;
     const timing = engine.lastTiming?.();
     const measuredTtft = firstAt ? Math.round(firstAt - t0) : llmMs;
+
+    if (delegate && di.route) {
+      recordDecision({ candidates: di.route.candidates.map((c) => ({ peerKey: c.peer_key, label: c.label, ok: c.ok, probeMs: c.probe_ms, error: c.error })), chosen: di.route.chosen, servedBy: di.served_by, fallbackReason: di.fallback_reason });
+    }
+    if (di.served_by === "remote") recordServed(di.peer_key ?? "", { ttftMs: sdk?.ttft_ms ?? measuredTtft, tps: sdk?.tokens_per_sec ?? (chunks > 0 ? chunks / (llmMs / 1000) : 0) });
 
     this.emit({ type: "served_by", turnId, servedBy: di.served_by, peerKey: di.peer_key, transportMs: prepared.warm ? undefined : di.transport_setup_ms != null ? Math.round(di.transport_setup_ms) : undefined, warm: prepared.warm && di.served_by === "remote", fallback: delegate && di.served_by === "local", reason: di.fallback_reason });
 

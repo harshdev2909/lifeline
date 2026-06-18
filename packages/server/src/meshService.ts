@@ -12,6 +12,8 @@ import { lookup } from "node:dns/promises";
 import { collectSysInfo, probePeers, closeSdkWorker, type PeerProbe } from "@lifeline/core";
 
 import { getSettings, MODEL_REGISTRY } from "./config";
+import { getLastDecision, getServed } from "./peerStats";
+import { providerStatus } from "./providerService";
 import type { MeshSnapshot, MeshPeer } from "./protocol";
 
 function modelLabel(key: string): string {
@@ -40,6 +42,7 @@ async function checkInternet(): Promise<boolean> {
 function selfNode(): MeshSnapshot["self"] {
   const s = collectSysInfo();
   const settings = getSettings();
+  const prov = providerStatus();
   return {
     label: hostname() || "this device",
     role: "this device",
@@ -47,6 +50,10 @@ function selfNode(): MeshSnapshot["self"] {
     platform: `${s.platform}/${s.arch}`,
     accel: s.qvac_accel_backend_expected,
     online: true,
+    serving: prov.serving,
+    publicKey: prov.publicKey,
+    serveTopic: prov.topic,
+    serveModel: prov.modelLabel,
   };
 }
 
@@ -64,6 +71,7 @@ function peerNodes(probes?: PeerProbe[]): MeshPeer[] {
       status,
       probeMs: pr?.probe_ms,
       error: pr?.error,
+      served: getServed(p.key),
     };
   });
 }
@@ -71,19 +79,19 @@ function peerNodes(probes?: PeerProbe[]): MeshPeer[] {
 /** A snapshot without probing (fast; peer status is "unknown"). */
 export async function buildMeshSnapshot(): Promise<MeshSnapshot> {
   const internet = await checkInternet();
-  return { self: selfNode(), peers: peerNodes(), internet };
+  return { self: selfNode(), peers: peerNodes(), internet, lastDecision: getLastDecision() };
 }
 
 /** A snapshot with real liveness — heartbeats every configured peer. */
 export async function probeMesh(): Promise<MeshSnapshot> {
   const settings = getSettings();
   const internet = await checkInternet();
-  if (!settings.peers.length) return { self: selfNode(), peers: [], internet };
+  if (!settings.peers.length) return { self: selfNode(), peers: [], internet, lastDecision: getLastDecision() };
   try {
     const probes = await probePeers(settings.peers.map((p) => p.key), {
       labels: Object.fromEntries(settings.peers.map((p) => [p.key, p.label])),
     });
-    return { self: selfNode(), peers: peerNodes(probes), internet };
+    return { self: selfNode(), peers: peerNodes(probes), internet, lastDecision: getLastDecision() };
   } finally {
     await closeSdkWorker();
   }

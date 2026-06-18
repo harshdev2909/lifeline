@@ -90,6 +90,13 @@ export interface DeviceInfo {
 
 export type MeshNodeStatus = "live" | "down" | "unknown" | "active";
 
+export interface PeerServedStats {
+  turns: number;
+  lastTtftMs?: number;
+  lastTps?: number;
+  lastAt?: number;
+}
+
 export interface MeshPeer {
   key: string;
   label: string;
@@ -98,6 +105,15 @@ export interface MeshPeer {
   status: MeshNodeStatus;
   probeMs?: number;
   error?: string;
+  served?: PeerServedStats;
+}
+
+export interface RouteDecision {
+  candidates: PeerProbeWire[];
+  chosen?: string;
+  servedBy: "local" | "remote";
+  fallbackReason?: string;
+  at: number;
 }
 
 export interface MeshSnapshot {
@@ -108,9 +124,14 @@ export interface MeshSnapshot {
     platform: string;
     accel: string;
     online: boolean;
+    serving: boolean;
+    publicKey?: string;
+    serveTopic?: string;
+    serveModel?: string;
   };
   peers: MeshPeer[];
   internet: boolean;
+  lastDecision?: RouteDecision;
 }
 
 export interface ServerSettings {

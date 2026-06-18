@@ -6,6 +6,7 @@ import { cn } from "../../lib/cn";
 import { shortKey } from "../../lib/format";
 import type { MeshPeer, MeshSnapshot } from "../../lib/protocol";
 import { useBridge } from "../../state/bridge";
+import { MeshControls } from "./MeshControls";
 import { IconButton } from "../ui/Button";
 import { Tooltip } from "../ui/Tooltip";
 
@@ -134,6 +135,7 @@ export function MeshVisualizer({ compact }: { compact?: boolean }) {
       </div>
 
       <MeshLegend mesh={mesh} lastDelegation={lastDelegation} />
+      <MeshControls />
     </section>
   );
 }

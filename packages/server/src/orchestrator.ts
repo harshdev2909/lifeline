@@ -41,6 +41,7 @@ import {
 
 import { getSettings, isModelKey } from "./config";
 import { engineManager } from "./engineManager";
+import { recordDecision, recordServed } from "./peerStats";
 import type { ServerEvent, SourceChip, TurnRequest } from "./protocol";
 import { getFile, registerFile } from "./uploads";
 
@@ -253,9 +254,18 @@ export async function runTurn(req: TurnRequest, emit: Emit, signal: AbortSignal)
     };
     logger.inference({ modelId, prompt_chars: prompt.length, prompt_tokens: sdk?.prompt_tokens, measured, sdk_reported: sdk });
 
-    if (delegate && di.route) logger.routing({ candidates: di.route.candidates, chosen: di.route.chosen, served_by: di.served_by });
+    if (delegate && di.route) {
+      logger.routing({ candidates: di.route.candidates, chosen: di.route.chosen, served_by: di.served_by });
+      recordDecision({
+        candidates: di.route.candidates.map((c) => ({ peerKey: c.peer_key, label: c.label, ok: c.ok, probeMs: c.probe_ms, error: c.error })),
+        chosen: di.route.chosen,
+        servedBy: di.served_by,
+        fallbackReason: di.fallback_reason,
+      });
+    }
     if (di.served_by === "remote") {
       logger.delegation({ peer_key: di.peer_key ?? "", transport_setup_ms: Math.round(di.transport_setup_ms ?? 0), e2e_encrypted: "per-docs", modelId, ttft_ms: sdk?.ttft_ms ?? measured.ttft_ms, tokens_per_sec: sdk?.tokens_per_sec ?? measured.tokens_per_sec, completion_tokens: sdk?.completion_tokens ?? measured.completion_tokens });
+      recordServed(di.peer_key ?? "", { ttftMs: sdk?.ttft_ms ?? measured.ttft_ms, tps: sdk?.tokens_per_sec ?? measured.tokens_per_sec });
     } else if (delegate) {
       logger.fallback({ reason: di.fallback_reason ?? "provider unavailable", peer_key: peerKeys[0] });
     }

@@ -17,6 +17,7 @@ import { engineManager } from "./engineManager";
 import { createHttpHandler, deviceInfo } from "./http";
 import { buildMeshSnapshot } from "./meshService";
 import { runTurn } from "./orchestrator";
+import { stopProvider } from "./providerService";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import { tracked } from "./serialize";
 import { cleanupUploads } from "./uploads";
@@ -120,11 +121,8 @@ function shutdown(): void {
   cleanupUploads();
   wss.close();
   httpServer.close();
-  // Dispose the warm engine/worker so it never outlives the process.
-  engineManager
-    .dispose()
-    .catch(() => {})
-    .finally(() => process.exit(0));
+  // Stop serving and dispose the warm engine/worker so nothing outlives the process.
+  Promise.allSettled([stopProvider(), engineManager.dispose()]).finally(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.once("SIGINT", shutdown);

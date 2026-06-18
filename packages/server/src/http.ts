@@ -19,9 +19,10 @@ import { extname, join, normalize } from "node:path";
 
 import { collectSysInfo } from "@lifeline/core";
 
-import { getSettings, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
+import { getSettings, isModelKey, MODEL_REGISTRY, resolvePeerRef, updateSettings, WEB_DIST } from "./config";
 import { engineManager } from "./engineManager";
 import { buildMeshSnapshot, probeMesh } from "./meshService";
+import { providerStatus, startProvider, stopProvider } from "./providerService";
 import type { ServerSettings } from "./protocol";
 import { tracked } from "./serialize";
 import { saveUpload, streamFile } from "./uploads";
@@ -123,6 +124,16 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): P
     }
 
     if (path === "/api/models") return json(res, 200, MODEL_REGISTRY), true;
+
+    if (path === "/api/provider" && req.method === "GET") return json(res, 200, providerStatus()), true;
+    if (path === "/api/provider/start" && req.method === "POST") {
+      const body = JSON.parse((await readBody(req)).toString("utf8") || "{}") as { topic?: string; model?: string };
+      const model = body.model && isModelKey(body.model) ? body.model : getSettings().defaultModel;
+      return json(res, 200, await tracked(() => startProvider(body.topic ?? "", model))), true;
+    }
+    if (path === "/api/provider/stop" && req.method === "POST") {
+      return json(res, 200, await tracked(() => stopProvider())), true;
+    }
 
     if (path === "/api/upload" && req.method === "POST") {
       const kindHeader = String(req.headers["x-kind"] ?? "image");
