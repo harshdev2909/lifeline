@@ -13,15 +13,22 @@ import { writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
 import {
+  budgetText,
   buildVisionSystemPrompt,
+  chunkUtf8,
   classifyImage,
   collectSysInfo,
   createEngine,
   detectInjection,
   extractText,
+  frameChunks,
   generateIllustration,
   generateVideo,
   KnowledgeBase,
+  reassemble,
+  simulateTransmit,
+  terseSystemSuffix,
+  utf8Bytes,
   labelSetById,
   matchLabel,
   runAdaptation,
@@ -73,6 +80,8 @@ export async function runTool(req: ToolRunRequest, emit: Emit, signal: AbortSign
       return runAdapt(req, emit, signal);
     case "video":
       return runVideo(req, emit, signal);
+    case "link":
+      return runLink(req, emit, signal);
     default:
       throw new Error(`Unknown tool: ${String((req as { tool: string }).tool)}`);
   }
@@ -393,6 +402,111 @@ async function runSoap(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Pr
     },
   });
   emit({ type: "tool_done", runId, output: { tool: "soap", text: answer.trim() || MEDICAL_DISCLAIMER }, evidence: logger.path });
+}
+
+/**
+ * Constrained-link mode — answer over a narrow, lossy channel. The model is told
+ * to answer tersely; the reply is byte-budgeted, split into UTF-8-safe chunks
+ * (never mid-codepoint), framed, and pushed through a simulated ACK/retry
+ * channel. The readout reports the link budget, bytes, chunks, and retries; an
+ * `constrained_link` evidence event records them.
+ */
+async function runLink(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Promise<void> {
+  const runId = req.runId;
+  const question = str(req, "question").trim();
+  if (!question) throw new Error("Enter a question to answer over the constrained link.");
+  const chunkBytes = Math.max(16, Math.min(1024, num(req, "chunkBytes") ?? 200));
+  const loss = Math.max(0, Math.min(0.9, num(req, "loss") ?? 0.25));
+  const langRaw = str(req, "lang");
+  const lang = supportedLangs().includes(langRaw as never) ? langRaw : "";
+  const delegate = req.options?.delegate ?? false;
+  const model = resolveModel(str(req, "model", "medgemma4b"));
+  const totalBudget = Math.max(240, chunkBytes * 4); // every byte costs — keep it short
+
+  const logger = new RunLogger();
+  logger.session(delegate ? "ui (constrained link, delegated)" : "ui (constrained link)", collectSysInfo());
+
+  emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: model.label });
+  const engine = engineFor(delegate);
+  const modelId = await engine.loadModel({ model });
+  emit({ type: "tool_stage", runId, stage: "load", status: "done", detail: model.label });
+
+  const system = `You are Lifeline, an offline first-aid assistant answering over a very constrained radio link. ${terseSystemSuffix()} If it is an emergency, say to seek emergency care first.`;
+  const messages: ChatMsg[] = [
+    { role: "system", content: system },
+    { role: "user", content: question },
+  ];
+  emit({ type: "tool_stage", runId, stage: "generate", status: "start", detail: "Terse answer…" });
+  const t0 = performance.now();
+  let full = "";
+  const it = engine.complete({ modelId, messages, stream: true, kvCache: false }) as AsyncIterable<string>;
+  for await (const tok of it) {
+    if (signal.aborted) break;
+    full += tok;
+    emit({ type: "tool_token", runId, delta: tok });
+  }
+  const genMs = Math.round(performance.now() - t0);
+  const sdk = engine.lastStats?.() ?? null;
+  const di = engine.delegationInfo?.() ?? { served_by: "local" as const };
+  await engine.unload(modelId);
+  emit({ type: "tool_stage", runId, stage: "generate", status: "done", ms: genMs });
+
+  full = full.trim();
+  // Localize for a genuine multibyte payload when a non-English link is chosen.
+  if (lang && full) {
+    emit({ type: "tool_stage", runId, stage: "translate", status: "start", detail: `en→${lang}` });
+    const tr = await translateFromEnglish(full, lang);
+    logger.translation({ direction: tr.direction, src_lang: tr.src_lang, tgt_lang: tr.tgt_lang, chars: tr.chars, ms: tr.ms });
+    full = tr.text.trim();
+    emit({ type: "tool_stage", runId, stage: "translate", status: "done", ms: tr.ms });
+  }
+
+  const fullBytes = utf8Bytes(full);
+  const { text: budgeted, truncated } = budgetText(full, totalBudget);
+  const chunks = chunkUtf8(budgeted, chunkBytes);
+  const frames = frameChunks(chunks);
+  const reassembledOk = reassemble(frames) === budgeted;
+  const sentBytes = utf8Bytes(budgeted);
+  const tx = simulateTransmit(frames.length, { loss });
+
+  logger.constrainedLink({ byte_budget: chunkBytes, total_bytes: sentBytes, chunks: frames.length, retries: tx.retries, full_bytes: fullBytes });
+
+  emit({
+    type: "tool_telemetry",
+    runId,
+    telemetry: {
+      servedBy: di.served_by,
+      backend: sdk?.backend_device,
+      metrics: [
+        { label: "budget", value: `${chunkBytes}B/chunk`, hint: "Max UTF-8 bytes per chunk on this link." },
+        { label: "sent", value: `${sentBytes}B`, hint: truncated ? `Budgeted from ${fullBytes}B to fit the link.` : "Total answer bytes sent." },
+        { label: "chunks", value: String(frames.length), hint: "UTF-8-safe chunks (never split a codepoint)." },
+        { label: "retries", value: String(tx.retries), hint: `Re-sends at ${Math.round(loss * 100)}% simulated loss.` },
+        ...(tx.dropped ? [{ label: "dropped", value: String(tx.dropped), hint: "Chunks that exhausted their retries." }] : []),
+      ],
+    },
+  });
+
+  emit({
+    type: "tool_done",
+    runId,
+    output: {
+      tool: "link",
+      question,
+      answer: reassemble(frames),
+      lang,
+      byteBudget: chunkBytes,
+      fullBytes,
+      sentBytes,
+      truncated,
+      chunks: frames.length,
+      loss,
+      retries: tx.retries,
+      dropped: tx.dropped,
+      reassembledOk,
+    },
+    evidence: logger.path,
+  });
 }
 
 /**

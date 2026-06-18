@@ -42,7 +42,8 @@ export type ToolId =
   | "classify"
   | "illustrate"
   | "adapt"
-  | "video";
+  | "video"
+  | "link";
 
 export interface ToolUpload {
   role: string;
@@ -112,7 +113,22 @@ export type ToolOutput =
       adaptedAnswer: string;
       model: string;
     }
-  | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string };
+  | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string }
+  | {
+      tool: "link";
+      question: string;
+      answer: string;
+      lang: string;
+      byteBudget: number;
+      fullBytes: number;
+      sentBytes: number;
+      truncated: boolean;
+      chunks: number;
+      loss: number;
+      retries: number;
+      dropped: number;
+      reassembledOk: boolean;
+    };
 
 // --- unattended responder mode ---
 export type ResponderMode = "allowlist" | "open";

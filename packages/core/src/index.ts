@@ -98,6 +98,18 @@ export {
   incidentToJson,
   severityOf,
 } from "./incident";
+
+export {
+  utf8Bytes,
+  chunkUtf8,
+  frameChunks,
+  reassemble,
+  budgetText,
+  simulateTransmit,
+  terseSystemSuffix,
+  LINK_PROFILES,
+} from "./constrainedLink";
+export type { LinkProfile, ChunkFrame, TransmitResult } from "./constrainedLink";
 export type {
   IncidentReport,
   IncidentInput,

@@ -10,7 +10,7 @@
  */
 import type { ComponentType } from "react";
 
-import { ClipboardList, Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, RadioTower, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
+import { ClipboardList, Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, RadioTower, ScanSearch, ScanText, Search, SignalLow, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { AdaptTool } from "../components/tools/AdaptTool";
@@ -26,6 +26,7 @@ import { SoapTool } from "../components/tools/SoapTool";
 import { SpeakTool } from "../components/tools/SpeakTool";
 import { TranslateTool } from "../components/tools/TranslateTool";
 import { VisionTool } from "../components/tools/VisionTool";
+import { ConstrainedLinkTool } from "../components/tools/ConstrainedLinkTool";
 import { ResponderTool } from "../components/tools/ResponderTool";
 import { NetworkTool } from "../components/workspace/NetworkTool";
 
@@ -187,6 +188,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Auto-answer triage questions from the mesh — grounded, cited, unattended",
     icon: RadioTower,
     Component: ResponderTool,
+  },
+  {
+    id: "link",
+    group: "network",
+    label: "Constrained link",
+    blurb: "Answer over a narrow, lossy channel — terse, byte-budgeted, chunked with retry",
+    icon: SignalLow,
+    Component: ConstrainedLinkTool,
   },
 ];
 

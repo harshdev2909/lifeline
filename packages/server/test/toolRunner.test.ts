@@ -62,3 +62,7 @@ test("the illustration tool needs a prompt", async () => {
 test("the video tool needs a prompt", async () => {
   await assert.rejects(() => runTool({ runId: "vd1", tool: "video", params: { prompt: "" } }, noEmit, signal()), /Describe the first-aid action/);
 });
+
+test("the constrained-link tool needs a question", async () => {
+  await assert.rejects(() => runTool({ runId: "ln1", tool: "link", params: { question: "  " } }, noEmit, signal()), /Enter a question/);
+});

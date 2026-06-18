@@ -63,7 +63,8 @@ export type ToolId =
   | "classify"
   | "illustrate"
   | "adapt"
-  | "video";
+  | "video"
+  | "link";
 
 export interface ToolUpload {
   /** Role this upload plays for the tool (e.g. "image"). */
@@ -138,7 +139,24 @@ export type ToolOutput =
       adaptedAnswer: string;
       model: string;
     }
-  | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string };
+  | { tool: "video"; url: string; mime: string; playable: boolean; frames: number; fps: number; width: number; height: number; seed?: number; prompt: string }
+  | {
+      tool: "link";
+      question: string;
+      /** The reassembled answer (proves the chunks round-trip intact). */
+      answer: string;
+      lang: string;
+      /** Max UTF-8 bytes per chunk on the simulated link. */
+      byteBudget: number;
+      fullBytes: number;
+      sentBytes: number;
+      truncated: boolean;
+      chunks: number;
+      loss: number;
+      retries: number;
+      dropped: number;
+      reassembledOk: boolean;
+    };
 
 // --- unattended responder mode ----------------------------------------------
 export type ResponderMode = "allowlist" | "open";
