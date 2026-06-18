@@ -44,6 +44,25 @@ export function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChang
           </Guarantee>
         </section>
 
+        <section className="space-y-2 border-t border-hairline pt-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-faint">Deliberately not enabled</h3>
+          <p className="text-sm leading-relaxed text-fg-muted">Some QVAC capabilities are left off, honestly:</p>
+          <ul className="space-y-1.5 text-sm leading-relaxed text-fg-muted">
+            <li>
+              <span className="text-fg">Video generation</span> — in the SDK, but ~14.5 GB of weights and 11–28 minutes per 1–5 s clip
+              make it impractical as a field tool.
+            </li>
+            <li>
+              <span className="text-fg">BCI</span> (neural signal → text) — present in <span className="font-mono text-2xs">@qvac/sdk</span> 0.13.3, but it
+              needs EEG-class hardware and has no field-medic use case here.
+            </li>
+            <li>
+              <span className="text-fg">VLA</span> (vision-language-action) — present in <span className="font-mono text-2xs">@qvac/sdk</span> 0.13.3, but it
+              drives a robot, not a triage workflow.
+            </li>
+          </ul>
+        </section>
+
         {device && (
           <section className="space-y-2 border-t border-hairline pt-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-faint">This device</h3>
