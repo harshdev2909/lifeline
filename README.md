@@ -141,6 +141,10 @@ All models run on-device and are cached after first download.
 | Qwen3-0.6B Instruct (Q4) | LoRA fine-tuning base (Adapt) | ~0.4 GB | QVAC registry | per Qwen3 |
 | Wan 2.1 T2V 1.3B + UMT5-XXL + VAE | text-to-video (Animate, heavy/opt-in) | ~14.5 GB | QVAC registry | per Wan 2.1 |
 
+## Prior work and reuse
+
+All application code in this repository was written during the hackathon. It builds on, and does not reimplement, third-party work: the [QVAC SDK](https://github.com/tetherto/qvac) (on-device inference, model registry, P2P transport) and its bundled open models (listed above, under their own licenses); and standard libraries — React, Vite, Tailwind, Radix UI, framer-motion, lucide-react, and `hypercore-crypto` for the topic-to-key derivation. The first-aid corpus and all test fixtures are original CC0 content (see below). No pre-existing Lifeline codebase, no proprietary medical dataset, and no cloud AI service is used. The MedPsy-vs-MedGemma comparison reports only figures we measured on this hardware — no third-party benchmark numbers are claimed as ours.
+
 ## License and acknowledgements
 
 Licensed under [Apache-2.0](./LICENSE).
