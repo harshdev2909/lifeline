@@ -66,3 +66,98 @@ about twenty minutes at a time, apply gentle Compression with a bandage, and Ele
 a suspected broken bone, do not try to straighten it; support and immobilize it in the position
 found, padding around it, and seek medical care. Watch for signs of poor circulation beyond the
 injury, such as a cold, pale, or numb limb, which needs urgent attention.
+
+## Fever
+A fever is a raised body temperature, usually the body's response to an infection. For an adult or
+older child, rest and drink plenty of fluids to stay hydrated, dress lightly, and keep the room
+comfortably cool. Paracetamol (acetaminophen) or ibuprofen taken according to the label can ease
+discomfort and bring the temperature down; do not give aspirin to children. Sponge with lukewarm
+(not cold) water if it helps comfort, but do not use ice or cold baths. Seek urgent medical care
+if the fever is very high and will not come down, lasts more than three days, or comes with a stiff
+neck, a rash that does not fade when pressed, severe headache, confusion, difficulty breathing,
+chest pain, a seizure, or persistent vomiting. Any fever in a baby under three months is an
+emergency — seek care immediately.
+
+## Dehydration
+Dehydration happens when the body loses more fluid than it takes in, often from heat, fever,
+vomiting, or diarrhea. Early signs are thirst, a dry mouth, dark urine, tiredness, and dizziness.
+Have the person sip water or, better, an oral rehydration solution (about one liter of clean water
+with six level teaspoons of sugar and half a teaspoon of salt) in small, frequent amounts. Rest in
+a cool place. Seek urgent care if they cannot keep fluids down, pass little or no urine, have
+sunken eyes, become very drowsy or confused, or if a child has no wet nappies, no tears, or a
+sunken soft spot.
+
+## Vomiting and Diarrhea
+The main risk from vomiting and diarrhea is dehydration. Rest the stomach briefly, then give small,
+frequent sips of water or oral rehydration solution; increase the amount as it is tolerated. Once
+vomiting settles, reintroduce bland foods such as rice, toast, or bananas. Wash hands well to avoid
+spreading infection. Seek medical care if there is blood in the vomit or stool, severe or
+constant abdominal pain, a high fever, signs of dehydration, or if symptoms last more than two days
+in an adult or persist in a young child or older person.
+
+## Cold, Flu, and Sore Throat
+Most colds, flu, and sore throats are caused by viruses and ease within one to two weeks. Rest,
+drink fluids, and use paracetamol or ibuprofen per the label for aches, fever, and throat pain;
+warm drinks and gargling with warm salt water can soothe a sore throat. Antibiotics do not help a
+viral illness. Seek medical care if there is difficulty breathing or chest pain, a very high or
+persistent fever, symptoms that worsen after about a week, a severe sore throat with drooling or
+trouble swallowing, or if the person has a weakened immune system or a long-term lung condition.
+
+## Headache
+For an ordinary tension headache, rest in a quiet, dimly lit room, drink water in case
+dehydration is a factor, and take simple pain relief such as paracetamol or ibuprofen as directed;
+easing stress and eye strain helps. Seek EMERGENCY care for a headache that is sudden and very
+severe ("the worst ever"), comes with a stiff neck and fever, or comes with confusion, weakness or
+numbness, slurred speech, vision loss, or repeated vomiting, and for any bad headache after a head
+injury — these can signal a stroke, bleeding, or meningitis.
+
+## Minor Cuts, Scrapes, and Wounds
+Wash your hands, then rinse the wound under clean running water to remove dirt. Stop bleeding with
+gentle direct pressure using a clean cloth, pat the area dry, and cover it with a clean, non-stick
+dressing; change the dressing daily and keep it clean and dry. Watch for infection — spreading
+redness, warmth, swelling, pus, or fever. Seek medical care for deep or gaping wounds that may need
+closure, wounds that will not stop bleeding, animal or human bites, dirty or puncture wounds, or if
+tetanus protection is not up to date.
+
+## Nosebleed
+Sit upright and lean slightly forward so blood does not run down the throat, and pinch the soft part
+of the nose just below the bony bridge firmly for ten to fifteen minutes without letting go to
+check; breathe through the mouth. A cold pack on the bridge can help. Afterwards, avoid blowing or
+picking the nose for several hours. Seek care if the bleeding does not stop after about twenty
+minutes of steady pressure, is very heavy, follows a head injury, or keeps coming back.
+
+## Fainting
+Fainting is a brief loss of consciousness from a temporary drop in blood flow to the brain. If
+someone feels faint, help them sit or lie down and raise their legs, loosen tight clothing, and
+give fresh air. After fainting, let them recover lying down for a few minutes before sitting up
+slowly. Seek medical care if they do not wake quickly, were injured in the fall, have chest pain,
+palpitations, or breathlessness, are pregnant or older, or if fainting happens repeatedly.
+
+## Asthma Attack or Sudden Breathlessness
+Help the person sit upright, stay calm, and use their reliever inhaler (usually blue), taking one
+puff every thirty to sixty seconds up to ten puffs, ideally through a spacer. Loosen tight clothing
+and encourage slow breathing. Call emergency services if there is no inhaler, the inhaler is not
+helping, they cannot speak in full sentences, their lips or face look blue, or they are becoming
+exhausted or drowsy — this is life-threatening.
+
+## Low Blood Sugar (Diabetic Emergency)
+If a person known to have diabetes becomes shaky, sweaty, pale, irritable, or confused but is awake
+and able to swallow, give a fast-acting sugar straight away — a sugary (non-diet) drink, fruit
+juice, or glucose tablets — then a longer-lasting snack such as bread or biscuits once they start
+to improve. Do not give anything by mouth if they are drowsy or unconscious; place them on their
+side and call emergency services at once.
+
+## Poisoning or Overdose
+Call emergency services or a poison control center immediately and follow their instructions. Try
+to find out what was swallowed, how much, and when, and keep the container or packaging to show
+responders. Do not make the person vomit unless a professional tells you to. If they are unconscious
+but breathing, place them on their side; if they are not breathing normally, begin CPR. For poison
+on the skin or in the eyes, rinse with plenty of clean water.
+
+## Insect Stings and Bites
+For a bee sting, scrape the sting out sideways (do not squeeze it), wash the area, and apply a cold
+pack to ease pain and swelling; antihistamines or simple pain relief can help. Remove a tick by
+gripping it with fine tweezers close to the skin and pulling steadily upward, then clean the area.
+Watch closely for a severe allergic reaction — swelling of the face or throat, difficulty breathing,
+or collapse — and treat as Anaphylaxis. Seek care for signs of infection, a spreading or
+target-shaped rash, or bites from venomous creatures.
