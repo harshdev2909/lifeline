@@ -201,6 +201,16 @@ export interface OcrEvent {
   text_chars: number;
   ocr_ms: number;
 }
+export interface ClassifyEvent {
+  type: "classify";
+  ts: string;
+  /** triage = bundled MobileNetV3 (real softmax); screen = multimodal constrained to a label set. */
+  mode: "triage" | "screen";
+  model: string;
+  image: string;
+  labels: Array<{ label: string; confidence?: number }>;
+  classify_ms: number;
+}
 export interface VisionEvent {
   type: "vision";
   ts: string;
@@ -286,6 +296,7 @@ export type EvidenceEvent =
   | InjectionGuardEvent
   | SttEvent  | TranslationEvent
   | OcrEvent
+  | ClassifyEvent
   | VisionEvent
   | TtsEvent
   | MedbenchEvent;
@@ -410,6 +421,10 @@ export class RunLogger {
 
   ocr(args: Omit<OcrEvent, "type" | "ts">): void {
     this.write({ type: "ocr", ts: new Date().toISOString(), ...args });
+  }
+
+  classify(args: Omit<ClassifyEvent, "type" | "ts">): void {
+    this.write({ type: "classify", ts: new Date().toISOString(), ...args });
   }
 
   tts(args: Omit<TtsEvent, "type" | "ts">): void {

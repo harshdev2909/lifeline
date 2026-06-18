@@ -13,11 +13,15 @@ import { performance } from "node:perf_hooks";
 
 import {
   buildVisionSystemPrompt,
+  classifyImage,
   collectSysInfo,
   createEngine,
   detectInjection,
   extractText,
   KnowledgeBase,
+  labelSetById,
+  matchLabel,
+  SCREEN_LABEL_SETS,
   MEDICAL_DISCLAIMER,
   MODELS,
   RunLogger,
@@ -57,6 +61,8 @@ export async function runTool(req: ToolRunRequest, emit: Emit, signal: AbortSign
       return runSoap(req, emit, signal);
     case "corpus":
       return runCorpus(req, emit);
+    case "classify":
+      return runClassify(req, emit, signal);
     default:
       throw new Error(`Unknown tool: ${String((req as { tool: string }).tool)}`);
   }
@@ -377,6 +383,105 @@ async function runSoap(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Pr
     },
   });
   emit({ type: "tool_done", runId, output: { tool: "soap", text: answer.trim() || MEDICAL_DISCLAIMER }, evidence: logger.path });
+}
+
+/**
+ * Image classification — two honest modes:
+ *  - triage: the bundled MobileNetV3 classifier (real softmax: food/report/other),
+ *    used to route a captured document to the OCR reader.
+ *  - screen: the multimodal model constrained to a fixed medical label set, with
+ *    code-side validation. Screening support, never a diagnosis; no fake number.
+ */
+async function runClassify(req: ToolRunRequest, emit: Emit, signal: AbortSignal): Promise<void> {
+  const runId = req.runId;
+  const file = getFile(req.uploads?.find((u) => u.role === "image")?.id ?? "");
+  if (!file) throw new Error("Attach a photo to screen.");
+  const mode = str(req, "mode", "triage") === "screen" ? "screen" : "triage";
+
+  const logger = new RunLogger();
+  logger.session("ui (screen tool)", collectSysInfo());
+
+  if (mode === "triage") {
+    emit({ type: "tool_stage", runId, stage: "classify", status: "start", detail: "on-device classifier" });
+    const r = await classifyImage(file.path);
+    if (signal.aborted) return;
+    logger.classify({ mode: "triage", model: r.model, image: file.name, labels: r.results, classify_ms: r.classify_ms });
+    const top = r.results[0];
+    const note =
+      top?.label === "report"
+        ? "Looks like a document or label — open Read text to extract it."
+        : top?.label === "food"
+          ? "Not a medical image."
+          : undefined;
+    emit({ type: "tool_stage", runId, stage: "classify", status: "done", ms: r.classify_ms });
+    emit({
+      type: "tool_telemetry",
+      runId,
+      telemetry: {
+        servedBy: "local",
+        metrics: [
+          { label: "model", value: "MobileNetV3", hint: r.model },
+          { label: "top", value: top ? `${(top.confidence * 100).toFixed(0)}%` : "—", hint: "Confidence of the top class (real softmax)." },
+          { label: "ms", value: `${r.classify_ms}ms`, hint: "On-device classification time (measured)." },
+        ],
+      },
+    });
+    emit({ type: "tool_done", runId, output: { tool: "classify", mode: "triage", results: r.results, note }, evidence: logger.path });
+    return;
+  }
+
+  // screen: multimodal model constrained to a fixed label set + code-side validation.
+  const set = labelSetById(str(req, "labelSet", "burn")) ?? SCREEN_LABEL_SETS[0];
+  const delegate = req.options?.delegate ?? false;
+  emit({ type: "tool_stage", runId, stage: "screen", status: "start", detail: set.label });
+  const engine = engineFor(delegate);
+  const modelId = await engine.loadModel({ model: MODELS.vision });
+  const t0 = performance.now();
+  const optsList = set.options.map((o) => `- ${o}`).join("\n");
+  let answer = "";
+  const it = engine.complete({
+    modelId,
+    stream: true,
+    kvCache: false,
+    messages: [
+      {
+        role: "system",
+        content: `You are a triage screening aid, not a diagnostician. Look at the image and choose the single best category from this list:\n${optsList}\nReply with EXACTLY one category from the list on the first line, then one short sentence of visual reasoning. Never diagnose or recommend treatment.`,
+      },
+      { role: "user", content: "Which category best fits this image?", attachments: [{ path: file.path }] },
+    ],
+  }) as AsyncIterable<string>;
+  for await (const tok of it) {
+    if (signal.aborted) break;
+    answer += tok;
+  }
+  const totalMs = Math.round(performance.now() - t0);
+  const di = engine.delegationInfo?.() ?? { served_by: "local" as const };
+  await engine.unload(modelId);
+  const matched = matchLabel(answer, set.options) ?? "unclear";
+  const firstLine = answer.split("\n")[0]?.trim() ?? "";
+  const reason = answer.split("\n").slice(1).join(" ").trim() || firstLine;
+  logger.classify({ mode: "screen", model: `${MODELS.vision.label} (constrained: ${set.label})`, image: file.name, labels: [{ label: matched }], classify_ms: totalMs });
+
+  emit({ type: "tool_stage", runId, stage: "screen", status: "done", ms: totalMs });
+  emit({
+    type: "tool_telemetry",
+    runId,
+    telemetry: {
+      servedBy: di.served_by,
+      metrics: [
+        { label: "model", value: "SmolVLM2", hint: `${MODELS.vision.label}, constrained to ${set.label}` },
+        { label: "labels", value: String(set.options.length), hint: "Fixed label set the answer is validated against." },
+        { label: "ms", value: `${totalMs}ms`, hint: "Total screening time (measured)." },
+      ],
+    },
+  });
+  emit({
+    type: "tool_done",
+    runId,
+    output: { tool: "classify", mode: "screen", results: [{ label: matched }], reason, note: "Screening support, not a diagnosis — confirm with the manual or a clinician." },
+    evidence: logger.path,
+  });
 }
 
 /** Corpus manager — ingest the manual and show its chunks/sources. */

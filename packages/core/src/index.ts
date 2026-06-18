@@ -58,6 +58,9 @@ export type { TranslateResult } from "./translate";
 export { extractText } from "./ocr";
 export type { OcrResult, OcrOptions, OcrBlock } from "./ocr";
 
+export { classifyImage, matchLabel, labelSetById, SCREEN_LABEL_SETS } from "./classify";
+export type { ClassifyResult, ClassLabel, LabelSet } from "./classify";
+
 export { KnowledgeBase } from "./rag";
 export type {
   KnowledgeBaseOptions,

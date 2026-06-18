@@ -50,3 +50,7 @@ test("vision needs an image and the note tool needs notes", async () => {
   await assert.rejects(() => runTool({ runId: "v1", tool: "vision", uploads: [] }, noEmit, signal()), /Attach a photo/);
   await assert.rejects(() => runTool({ runId: "n1", tool: "soap", params: { text: "" } }, noEmit, signal()), /Paste the case notes/);
 });
+
+test("the screening aid needs an image", async () => {
+  await assert.rejects(() => runTool({ runId: "c1", tool: "classify", uploads: [] }, noEmit, signal()), /Attach a photo/);
+});

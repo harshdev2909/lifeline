@@ -10,9 +10,10 @@
  */
 import type { ComponentType } from "react";
 
-import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanText, Search, Volume2 } from "lucide-react";
+import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
+import { ClassifyTool } from "../components/tools/ClassifyTool";
 import { CorpusTool } from "../components/tools/CorpusTool";
 import { DictateTool } from "../components/tools/DictateTool";
 import { OcrTool } from "../components/tools/OcrTool";
@@ -75,6 +76,14 @@ export const TOOLS: ToolDef[] = [
     blurb: "Describe observable findings in a photo — triage support, not a diagnosis",
     icon: Eye,
     Component: VisionTool,
+  },
+  {
+    id: "classify",
+    group: "see",
+    label: "Screening aid",
+    blurb: "Capture-triage a document, or screen an image against a fixed label set",
+    icon: ScanSearch,
+    Component: ClassifyTool,
   },
   {
     id: "ocr",

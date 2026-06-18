@@ -38,7 +38,8 @@ export type ToolId =
   | "speak"
   | "vision"
   | "soap"
-  | "corpus";
+  | "corpus"
+  | "classify";
 
 export interface ToolUpload {
   role: string;
@@ -91,7 +92,8 @@ export type ToolOutput =
   | { tool: "speak"; audioUrl: string; chars: number }
   | { tool: "vision"; findings: string; injection?: InjectionFlag }
   | { tool: "soap"; text: string }
-  | { tool: "corpus"; workspace: string; docCount: number; chunkCount: number; embedModel: string; chunks: CorpusChunk[] };
+  | { tool: "corpus"; workspace: string; docCount: number; chunkCount: number; embedModel: string; chunks: CorpusChunk[] }
+  | { tool: "classify"; mode: "triage" | "screen"; results: { label: string; confidence?: number }[]; reason?: string; note?: string };
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
