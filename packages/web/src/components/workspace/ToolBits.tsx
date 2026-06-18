@@ -5,7 +5,7 @@
  */
 import { useRef, useState, type ReactNode } from "react";
 
-import { AlertCircle, Cpu, ImageUp, Loader2, Mic, Radio, ShieldPlus, Square, Upload, X } from "lucide-react";
+import { AlertCircle, Cpu, ImageUp, Loader2, Mic, Radio, ShieldPlus, Square, Upload, X, type LucideIcon } from "lucide-react";
 
 import { uploadFile, type UploadResult } from "../../lib/api";
 import { cn } from "../../lib/cn";
@@ -61,34 +61,78 @@ export function OutputCard({ title, children }: { title: string; children: React
   );
 }
 
-/** Local-vs-peer run control. Heavy tools offer to offload to a mesh peer. */
-export function DelegateToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export interface SegmentOption {
+  value: string;
+  label: string;
+  icon?: LucideIcon;
+  /** Active hue — defaults to the accent. local/remote keep the state-colour meaning. */
+  tone?: "accent" | "local" | "remote";
+}
+
+/**
+ * The one segmented control every tool uses for a small, mutually-exclusive
+ * choice (audience, mode, epochs, where-to-run). One set of states and one
+ * spacing spec, so a toggle reads the same in every tool.
+ */
+export function SegmentedControl({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: SegmentOption[];
+  ariaLabel: string;
+  disabled?: boolean;
+}) {
   return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-hairline" role="group" aria-label="Where to run">
-      <Seg active={!value} onClick={() => onChange(false)} disabled={disabled}>
-        <Cpu className="h-3.5 w-3.5" aria-hidden /> On device
-      </Seg>
-      <Seg active={value} onClick={() => onChange(true)} disabled={disabled} tone="remote">
-        <Radio className="h-3.5 w-3.5" aria-hidden /> Peer
-      </Seg>
+    <div className="inline-flex overflow-hidden rounded-lg border border-hairline" role="group" aria-label={ariaLabel}>
+      {options.map((o) => {
+        const active = o.value === value;
+        const tone = o.tone ?? "accent";
+        const Icon = o.icon;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            disabled={disabled}
+            aria-pressed={active}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors duration-150 ease-spring disabled:opacity-45",
+              active
+                ? tone === "remote"
+                  ? "bg-remote-soft text-remote"
+                  : tone === "local"
+                    ? "bg-local-soft text-local"
+                    : "bg-accent-soft text-accent"
+                : "text-fg-muted hover:bg-raised hover:text-fg",
+            )}
+          >
+            {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
+            {o.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function Seg({ active, onClick, disabled, tone = "local", children }: { active: boolean; onClick: () => void; disabled?: boolean; tone?: "local" | "remote"; children: ReactNode }) {
+/** Local-vs-peer run control. Heavy tools offer to offload to a mesh peer. */
+export function DelegateToggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <SegmentedControl
+      ariaLabel="Where to run"
+      value={value ? "peer" : "device"}
+      onChange={(v) => onChange(v === "peer")}
       disabled={disabled}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs transition-colors disabled:opacity-45",
-        active ? (tone === "remote" ? "bg-remote-soft text-remote" : "bg-local-soft text-local") : "text-fg-muted hover:bg-raised",
-      )}
-    >
-      {children}
-    </button>
+      options={[
+        { value: "device", label: "On device", icon: Cpu, tone: "local" },
+        { value: "peer", label: "Peer", icon: Radio, tone: "remote" },
+      ]}
+    />
   );
 }
 

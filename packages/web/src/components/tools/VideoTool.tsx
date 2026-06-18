@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Clapperboard, Download } from "lucide-react";
 
 import { Button } from "../ui/Button";
+import { Select } from "../ui/Field";
 import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
@@ -52,18 +53,18 @@ export function VideoTool() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-fg-muted">Length</span>
-          <select
-            value={frames}
-            onChange={(e) => setFrames(Number(e.target.value))}
-            className="rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-sm text-fg focus-visible:outline focus-visible:outline-2"
-            aria-label="Clip length"
-          >
-            <option value={17}>~1s · 17 frames (fastest)</option>
-            <option value={33}>~2s · 33 frames</option>
-            <option value={49}>~3s · 49 frames</option>
-            <option value={65}>~4s · 65 frames</option>
-            <option value={81}>~5s · 81 frames (best motion, slowest)</option>
-          </select>
+          <Select
+            ariaLabel="Clip length"
+            value={String(frames)}
+            onValueChange={(v) => setFrames(Number(v))}
+            options={[
+              { value: "17", label: "~1s · 17 frames (fastest)" },
+              { value: "33", label: "~2s · 33 frames" },
+              { value: "49", label: "~3s · 49 frames" },
+              { value: "65", label: "~4s · 65 frames" },
+              { value: "81", label: "~5s · 81 frames (best motion)" },
+            ]}
+          />
           <Button variant="primary" onClick={() => run({ tool: "video", params: { prompt, frames } })} loading={phase === "running"} disabled={!prompt.trim() || !ready}>
             <Clapperboard className="h-4 w-4" aria-hidden /> {phase === "done" ? "Generate again" : "Generate clip"}
           </Button>

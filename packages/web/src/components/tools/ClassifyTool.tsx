@@ -11,9 +11,9 @@ import { useState } from "react";
 import { ScanSearch, X } from "lucide-react";
 
 import type { UploadResult } from "../../lib/api";
-import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
-import { DelegateToggle, DisclaimerNote, ErrorBar, ImagePicker, OutputCard, RunningBar } from "../workspace/ToolBits";
+import { Select } from "../ui/Field";
+import { DelegateToggle, DisclaimerNote, ErrorBar, ImagePicker, OutputCard, RunningBar, SegmentedControl } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -57,19 +57,16 @@ export function ClassifyTool() {
       blurb="A fast classification aid. Capture-triage routes a photographed document to the reader; medical screening assigns a cautious category from a fixed label set. Screening is support for triage — never a diagnosis."
     >
       <div className="space-y-4">
-        <div className="inline-flex overflow-hidden rounded-lg border border-hairline" role="group" aria-label="Mode">
-          {(["triage", "screen"] as Mode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              aria-pressed={mode === m}
-              className={cn("px-3 py-1.5 text-xs transition-colors", mode === m ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-raised")}
-            >
-              {m === "triage" ? "Capture triage" : "Medical screening"}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          ariaLabel="Mode"
+          value={mode}
+          onChange={(v) => setMode(v as Mode)}
+          disabled={phase === "running"}
+          options={[
+            { value: "triage", label: "Capture triage" },
+            { value: "screen", label: "Medical screening" },
+          ]}
+        />
 
         {!up ? (
           <ImagePicker
@@ -85,18 +82,13 @@ export function ClassifyTool() {
               {preview && <img src={preview} alt={up.name} className="h-40 w-full rounded-xl border border-hairline bg-base object-contain sm:w-56" />}
               <div className="flex min-w-0 flex-1 flex-col gap-3">
                 {mode === "screen" && (
-                  <select
+                  <Select
+                    ariaLabel="Screening label set"
                     value={labelSet}
-                    onChange={(e) => setLabelSet(e.target.value)}
-                    className="rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-sm text-fg focus-visible:outline focus-visible:outline-2"
-                    aria-label="Screening label set"
-                  >
-                    {LABEL_SETS.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setLabelSet}
+                    options={LABEL_SETS.map((s) => ({ value: s.id, label: s.label }))}
+                    className="w-full sm:w-auto"
+                  />
                 )}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="primary" onClick={go} loading={phase === "running"} disabled={!ready}>

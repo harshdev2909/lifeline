@@ -9,9 +9,8 @@ import { useState } from "react";
 
 import { GraduationCap } from "lucide-react";
 
-import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
-import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar } from "../workspace/ToolBits";
+import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar, SegmentedControl } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -33,19 +32,13 @@ export function AdaptTool() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-fg-muted">Epochs</span>
-          <div className="inline-flex overflow-hidden rounded-lg border border-hairline" role="group" aria-label="Epochs">
-            {[1, 2, 3].map((n) => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setEpochs(n)}
-                aria-pressed={epochs === n}
-                className={cn("px-3 py-1.5 text-xs transition-colors", epochs === n ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-raised")}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Epochs"
+            value={String(epochs)}
+            onChange={(v) => setEpochs(Number(v))}
+            disabled={phase === "running"}
+            options={[1, 2, 3].map((n) => ({ value: String(n), label: String(n) }))}
+          />
           <Button variant="primary" onClick={() => run({ tool: "adapt", params: { epochs } })} loading={phase === "running"} disabled={!ready}>
             <GraduationCap className="h-4 w-4" aria-hidden /> {phase === "done" ? "Train again" : "Train adapter"}
           </Button>

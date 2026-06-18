@@ -3,9 +3,8 @@ import { useState } from "react";
 
 import { FileText } from "lucide-react";
 
-import { cn } from "../../lib/cn";
 import { Button } from "../ui/Button";
-import { DelegateToggle, DisclaimerNote, ErrorBar, OutputCard, RunningBar } from "../workspace/ToolBits";
+import { DelegateToggle, DisclaimerNote, ErrorBar, OutputCard, RunningBar, SegmentedControl } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -34,19 +33,16 @@ export function SoapTool() {
           className="w-full resize-y rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm leading-relaxed text-fg placeholder:text-fg-faint focus-visible:outline focus-visible:outline-2"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex overflow-hidden rounded-lg border border-hairline" role="group" aria-label="Output style">
-            {(["clinician", "patient"] as Audience[]).map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => setAudience(a)}
-                aria-pressed={audience === a}
-                className={cn("px-2.5 py-1.5 text-xs transition-colors", audience === a ? "bg-accent-soft text-accent" : "text-fg-muted hover:bg-raised")}
-              >
-                {a === "clinician" ? "SOAP note" : "For the patient"}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Output style"
+            value={audience}
+            onChange={(v) => setAudience(v as Audience)}
+            disabled={phase === "running"}
+            options={[
+              { value: "clinician", label: "SOAP note" },
+              { value: "patient", label: "For the patient" },
+            ]}
+          />
           <Button variant="primary" onClick={() => run({ tool: "soap", params: { text: notes, audience }, options: { delegate } })} loading={phase === "running"} disabled={!notes.trim() || !ready}>
             <FileText className="h-4 w-4" aria-hidden /> {phase === "done" ? "Regenerate" : "Generate"}
           </Button>

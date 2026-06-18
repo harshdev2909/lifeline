@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowLeftRight, Languages } from "lucide-react";
 
 import { Button } from "../ui/Button";
+import { Select } from "../ui/Field";
 import { ErrorBar, OutputCard, RunningBar } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
@@ -36,18 +37,12 @@ export function TranslateTool() {
           className="w-full resize-y rounded-xl border border-hairline bg-surface px-3 py-2.5 text-sm leading-relaxed text-fg placeholder:text-fg-faint focus-visible:outline focus-visible:outline-2"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
+            ariaLabel="Patient language"
             value={lang}
-            onChange={(e) => setLang(e.target.value)}
-            className="rounded-lg border border-hairline bg-surface px-2.5 py-1.5 text-sm text-fg focus-visible:outline focus-visible:outline-2"
-            aria-label="Patient language"
-          >
-            {LANGS.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
-              </option>
-            ))}
-          </select>
+            onValueChange={setLang}
+            options={LANGS.map((l) => ({ value: l.code, label: l.label }))}
+          />
           <button
             type="button"
             onClick={() => setToEnglish((v) => !v)}
