@@ -20,15 +20,32 @@ export function RunningBar({ label }: { label: string }) {
   );
 }
 
-/** A labelled progress bar for staged/long tools (image generation, training). */
+/**
+ * A labelled progress bar for staged/long tools (image generation, training).
+ * With a numeric `value` it fills to that fraction; without one it sweeps an
+ * indeterminate bar — honest motion for a run that can't report a percentage,
+ * never a fill stuck at zero.
+ */
 export function ProgressBar({ value, label }: { value?: number; label: string }) {
+  const pct = value != null ? Math.round(value * 100) : undefined;
   return (
     <div className="space-y-1.5 rounded-xl border border-hairline bg-surface px-4 py-3">
       <div className="flex items-center gap-2 text-sm text-fg-muted">
         <Loader2 className="h-4 w-4 animate-spin text-accent" aria-hidden /> {label}
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-raised">
-        <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round((value ?? 0) * 100)}%` }} />
+      <div
+        className="h-1.5 overflow-hidden rounded-full bg-raised"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={pct != null ? 0 : undefined}
+        aria-valuemax={pct != null ? 100 : undefined}
+        aria-valuenow={pct}
+      >
+        {pct != null ? (
+          <div className="h-full rounded-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />
+        ) : (
+          <div className="h-full w-2/5 rounded-full bg-accent animate-indeterminate" />
+        )}
       </div>
     </div>
   );
@@ -71,6 +88,24 @@ export function OutputCard({ title, children }: { title: string; children: React
     <div className="rounded-xl border border-hairline bg-surface">
       <div className="border-b border-hairline px-4 py-2 text-2xs uppercase tracking-wide text-fg-faint">{title}</div>
       <div className="px-4 py-3">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A boxed mono readout of a run's own metrics (corpus stats, training losses).
+ * Same label/value microstructure as the footer telemetry strip, so every
+ * number in the app — footer or card — reads identically and stays tabular.
+ */
+export function MetricStrip({ items }: { items: { k: string; v: string }[] }) {
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-hairline bg-surface px-4 py-3 font-mono text-2xs text-fg-muted">
+      {items.map((m) => (
+        <span key={m.k} className="inline-flex items-baseline gap-1">
+          <span className="text-fg-faint">{m.k}</span>
+          <span className="text-fg">{m.v}</span>
+        </span>
+      ))}
     </div>
   );
 }

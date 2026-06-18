@@ -99,4 +99,10 @@
     animation: none !important;
     opacity: 0.85 !important;
   }
+  /* Stop the sweep, but leave the bar resting at the start so "working" still
+     reads — without this the global duration override freezes it off-screen. */
+  .animate-indeterminate {
+    animation: none !important;
+    transform: none !important;
+  }
 }

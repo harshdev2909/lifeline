@@ -10,7 +10,7 @@ import { useState } from "react";
 import { GraduationCap, Info } from "lucide-react";
 
 import { Button } from "../ui/Button";
-import { DisclaimerNote, ErrorBar, NoticeBar, OutputCard, ProgressBar, SegmentedControl } from "../workspace/ToolBits";
+import { DisclaimerNote, ErrorBar, MetricStrip, NoticeBar, OutputCard, ProgressBar, SegmentedControl } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -49,13 +49,15 @@ export function AdaptTool() {
 
         {result && (
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-hairline bg-surface px-4 py-3 font-mono text-2xs text-fg-muted">
-              <Stat k="status" v={result.status} />
-              <Stat k="train loss" v={result.trainLoss != null ? result.trainLoss.toFixed(3) : "—"} />
-              <Stat k="val loss" v={result.valLoss != null ? result.valLoss.toFixed(3) : "—"} />
-              {result.valAccuracy != null && <Stat k="val acc" v={result.valAccuracy.toFixed(3)} />}
-              <Stat k="steps" v={String(result.steps)} />
-            </div>
+            <MetricStrip
+              items={[
+                { k: "status", v: result.status },
+                { k: "train loss", v: result.trainLoss != null ? result.trainLoss.toFixed(3) : "—" },
+                { k: "val loss", v: result.valLoss != null ? result.valLoss.toFixed(3) : "—" },
+                ...(result.valAccuracy != null ? [{ k: "val acc", v: result.valAccuracy.toFixed(3) }] : []),
+                { k: "steps", v: String(result.steps) },
+              ]}
+            />
 
             <p className="text-2xs text-fg-faint">Test prompt: “{result.testPrompt}”</p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -77,14 +79,5 @@ export function AdaptTool() {
         {phase === "done" && <ToolFooter telemetry={telemetry} evidence={evidence} />}
       </div>
     </ToolLayout>
-  );
-}
-
-function Stat({ k, v }: { k: string; v: string }) {
-  return (
-    <span>
-      <span className="text-fg-faint">{k} </span>
-      <span className="text-fg">{v}</span>
-    </span>
   );
 }

@@ -2,7 +2,7 @@
 import { Database, Layers } from "lucide-react";
 
 import { Button } from "../ui/Button";
-import { ErrorBar, RunningBar } from "../workspace/ToolBits";
+import { ErrorBar, MetricStrip, RunningBar } from "../workspace/ToolBits";
 import { ToolFooter } from "../workspace/ToolFooter";
 import { ToolLayout } from "../workspace/ToolLayout";
 import { useToolRun } from "../workspace/useToolRun";
@@ -26,20 +26,13 @@ export function CorpusTool() {
 
         {result && (
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-xl border border-hairline bg-surface px-4 py-3 font-mono text-2xs text-fg-muted">
-              <span>
-                <span className="text-fg-faint">docs </span>
-                <span className="text-fg">{result.docCount}</span>
-              </span>
-              <span>
-                <span className="text-fg-faint">chunks </span>
-                <span className="text-fg">{result.chunkCount}</span>
-              </span>
-              <span>
-                <span className="text-fg-faint">embed </span>
-                <span className="text-fg">{result.embedModel}</span>
-              </span>
-            </div>
+            <MetricStrip
+              items={[
+                { k: "docs", v: String(result.docCount) },
+                { k: "chunks", v: String(result.chunkCount) },
+                { k: "embed", v: result.embedModel },
+              ]}
+            />
             <div className="space-y-1.5">
               {result.chunks.map((c, i) => (
                 <div key={i} className="rounded-lg border border-hairline bg-surface px-3 py-2">

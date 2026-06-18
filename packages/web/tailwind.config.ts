@@ -112,6 +112,12 @@ const config: Config = {
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
+        // A partial-width bar sweeping across the track — honest "working, no
+        // numeric progress" motion for tools that can't report a fraction.
+        indeterminate: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(340%)" },
+        },
       },
       animation: {
         breathe: "breathe 3.2s ease-in-out infinite",
@@ -120,6 +126,7 @@ const config: Config = {
         "dialog-in": "dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1)",
         "overlay-in": "overlay-in 160ms ease",
         shimmer: "shimmer 1.6s infinite",
+        indeterminate: "indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite",
       },
     },
   },
