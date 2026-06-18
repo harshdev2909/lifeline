@@ -37,6 +37,13 @@ process.on("uncaughtException", (err: unknown) => {
     process.stderr.write(`  (ignored benign worker-shutdown RPC abort)\n`);
     return;
   }
+  // A worker crash (e.g. the OS OOM-killing a too-large generation like Wan
+  // video on a small device) surfaces as a rejected RPC the caller already
+  // turns into a tool_error — keep the bridge alive rather than exiting.
+  if (e?.code === 50205 || /WORKER_CRASHED|SIGKILL|worker exited/i.test(msg)) {
+    process.stderr.write(`  (ignored worker crash — surfaced to the client as an error)\n`);
+    return;
+  }
   process.stderr.write(`\nUncaught: ${msg}\n${(err as Error)?.stack ?? ""}\n`);
   process.exit(1);
 });

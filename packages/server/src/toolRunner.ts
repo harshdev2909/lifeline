@@ -561,17 +561,28 @@ async function runVideo(req: ToolRunRequest, emit: Emit, signal: AbortSignal): P
 
   const prompt = `simple instructional first-aid demonstration, clean flat line-art animation, neutral palette, no text: ${subject}`;
   let genStarted = false;
-  const r = await generateVideo(prompt, {
-    frames,
-    onProgress: (p) => emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: p.phase, progress: p.progress }),
-    onStep: (step, total) => {
-      if (!genStarted) {
-        genStarted = true;
-        emit({ type: "tool_stage", runId, stage: "load", status: "done" });
-      }
-      emit({ type: "tool_stage", runId, stage: "generate", status: "start", detail: `frame pass ${step}/${total}`, progress: total ? step / total : undefined });
-    },
-  });
+  let r;
+  try {
+    r = await generateVideo(prompt, {
+      frames,
+      onProgress: (p) => emit({ type: "tool_stage", runId, stage: "load", status: "start", detail: p.phase, progress: p.progress }),
+      onStep: (step, total) => {
+        if (!genStarted) {
+          genStarted = true;
+          emit({ type: "tool_stage", runId, stage: "load", status: "done" });
+        }
+        emit({ type: "tool_stage", runId, stage: "generate", status: "start", detail: `frame pass ${step}/${total}`, progress: total ? step / total : undefined });
+      },
+    });
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    // The Wan pipeline (~14.5 GB, incl. an 11.4 GB encoder) OOM-kills the worker
+    // on a device with too little memory. Surface that clearly, don't crash.
+    if (/WORKER_CRASHED|SIGKILL|worker exited|out of memory|MODEL_NOT_LOADED/i.test(m)) {
+      throw new Error("Out of memory generating video — Wan 2.1 needs ≈20 GB of unified memory (more than this device has). Offload to a stronger peer or run it on a larger machine.");
+    }
+    throw err;
+  }
   if (signal.aborted) return;
 
   logger.videoGen({ model: r.model, prompt: subject, width: r.width, height: r.height, frames: r.frames, fps: r.fps, steps: r.steps, seed: r.seed, generation_ms: r.generation_ms });
