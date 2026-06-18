@@ -5,7 +5,7 @@
  */
 import { useState } from "react";
 
-import { Download, Sparkles } from "lucide-react";
+import { Download, PencilRuler } from "lucide-react";
 
 import { Button } from "../ui/Button";
 import { DisclaimerNote, ErrorBar, OutputCard, ProgressBar } from "../workspace/ToolBits";
@@ -51,7 +51,7 @@ export function IllustrateTool() {
           ))}
         </div>
         <Button variant="primary" onClick={() => run({ tool: "illustrate", params: { prompt } })} loading={phase === "running"} disabled={!prompt.trim() || !ready}>
-          <Sparkles className="h-4 w-4" aria-hidden /> {phase === "done" ? "Generate again" : "Generate illustration"}
+          <PencilRuler className="h-4 w-4" aria-hidden /> {phase === "done" ? "Generate again" : "Generate illustration"}
         </Button>
 
         {phase === "running" && <ProgressBar value={progress} label={stage || "Generating on-device…"} />}

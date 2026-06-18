@@ -10,7 +10,7 @@
  */
 import type { ComponentType } from "react";
 
-import { Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, Radio, ScanSearch, ScanText, Search, Sparkles, Volume2 } from "lucide-react";
+import { Clapperboard, Database, Eye, FileText, GraduationCap, Languages, MessagesSquare, Mic, PencilRuler, Radio, ScanSearch, ScanText, Search, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
 import { AdaptTool } from "../components/tools/AdaptTool";
@@ -93,7 +93,7 @@ export const TOOLS: ToolDef[] = [
     group: "see",
     label: "Illustrate",
     blurb: "Generate a simple instructional first-aid diagram — a teaching aid, on-device",
-    icon: Sparkles,
+    icon: PencilRuler,
     Component: IllustrateTool,
   },
   {

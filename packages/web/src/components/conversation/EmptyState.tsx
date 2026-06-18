@@ -21,7 +21,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
         so it works with the network off.
       </p>
 
-      <div className="mt-7 grid w-full gap-2 sm:grid-cols-1">
+      <div className="mt-7 grid w-full gap-2">
         {EXAMPLES.map(({ icon: Icon, text }) => (
           <button
             key={text}
