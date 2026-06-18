@@ -247,6 +247,11 @@ export class KnowledgeBase {
     return { passages, stats };
   }
 
+  /** The chunks currently indexed (after ingest) — for a corpus overview. */
+  listChunks(): Array<{ id: string; source: string; section: string; snippet: string }> {
+    return Array.from(this.idMap.entries()).map(([id, m]) => ({ id, source: m.source, section: m.section, snippet: m.snippet }));
+  }
+
   /** Close the workspace (deleting its data) and unload the embedding model. */
   async close(): Promise<void> {
     try {

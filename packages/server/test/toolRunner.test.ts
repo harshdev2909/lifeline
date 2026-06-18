@@ -25,3 +25,28 @@ test("a bad upload role does not start a run (guard fires before any model load)
   );
   assert.equal(events.length, 0);
 });
+
+test("translate needs text and a supported language", async () => {
+  await assert.rejects(() => runTool({ runId: "t1", tool: "translate", params: { text: "" } }, noEmit, signal()), /Enter some text/);
+  await assert.rejects(
+    () => runTool({ runId: "t2", tool: "translate", params: { text: "hola", lang: "zz" } }, noEmit, signal()),
+    /Unsupported language/,
+  );
+});
+
+test("search needs a query", async () => {
+  await assert.rejects(() => runTool({ runId: "s1", tool: "search", params: { query: "  " } }, noEmit, signal()), /Enter a search query/);
+});
+
+test("dictate needs an audio clip", async () => {
+  await assert.rejects(() => runTool({ runId: "d1", tool: "dictate", uploads: [] }, noEmit, signal()), /Record or attach/);
+});
+
+test("speak needs text", async () => {
+  await assert.rejects(() => runTool({ runId: "k1", tool: "speak", params: {} }, noEmit, signal()), /Enter the text/);
+});
+
+test("vision needs an image and the note tool needs notes", async () => {
+  await assert.rejects(() => runTool({ runId: "v1", tool: "vision", uploads: [] }, noEmit, signal()), /Attach a photo/);
+  await assert.rejects(() => runTool({ runId: "n1", tool: "soap", params: { text: "" } }, noEmit, signal()), /Paste the case notes/);
+});

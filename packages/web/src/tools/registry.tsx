@@ -10,10 +10,17 @@
  */
 import type { ComponentType } from "react";
 
-import { MessagesSquare, Radio, ScanText } from "lucide-react";
+import { Database, Eye, FileText, Languages, MessagesSquare, Mic, Radio, ScanText, Search, Volume2 } from "lucide-react";
 
 import { Conversation } from "../components/conversation/Conversation";
+import { CorpusTool } from "../components/tools/CorpusTool";
+import { DictateTool } from "../components/tools/DictateTool";
 import { OcrTool } from "../components/tools/OcrTool";
+import { SearchTool } from "../components/tools/SearchTool";
+import { SoapTool } from "../components/tools/SoapTool";
+import { SpeakTool } from "../components/tools/SpeakTool";
+import { TranslateTool } from "../components/tools/TranslateTool";
+import { VisionTool } from "../components/tools/VisionTool";
 import { NetworkTool } from "../components/workspace/NetworkTool";
 
 export type ToolGroupId = "converse" | "see" | "read" | "listen" | "knowledge" | "adapt" | "network";
@@ -54,12 +61,68 @@ export const TOOLS: ToolDef[] = [
     bleed: true,
   },
   {
+    id: "soap",
+    group: "converse",
+    label: "Clinical note",
+    blurb: "Turn rough case notes into a SOAP summary or a plain-language explainer",
+    icon: FileText,
+    Component: SoapTool,
+  },
+  {
+    id: "vision",
+    group: "see",
+    label: "Analyze a photo",
+    blurb: "Describe observable findings in a photo — triage support, not a diagnosis",
+    icon: Eye,
+    Component: VisionTool,
+  },
+  {
     id: "ocr",
     group: "read",
     label: "Read text",
     blurb: "Photograph a label or note — read the printed text on-device",
     icon: ScanText,
     Component: OcrTool,
+  },
+  {
+    id: "translate",
+    group: "read",
+    label: "Translate",
+    blurb: "Offline two-way translation between English and the patient's language",
+    icon: Languages,
+    Component: TranslateTool,
+  },
+  {
+    id: "dictate",
+    group: "listen",
+    label: "Dictate",
+    blurb: "Speak a case note or memo and transcribe it on-device",
+    icon: Mic,
+    Component: DictateTool,
+  },
+  {
+    id: "speak",
+    group: "listen",
+    label: "Read aloud",
+    blurb: "Turn written guidance into speech, generated on-device",
+    icon: Volume2,
+    Component: SpeakTool,
+  },
+  {
+    id: "search",
+    group: "knowledge",
+    label: "Search the manual",
+    blurb: "Find the right passage by meaning, with source and similarity score",
+    icon: Search,
+    Component: SearchTool,
+  },
+  {
+    id: "corpus",
+    group: "knowledge",
+    label: "Knowledge base",
+    blurb: "Re-index the manual and inspect the chunks that ground answers",
+    icon: Database,
+    Component: CorpusTool,
   },
   {
     id: "network",

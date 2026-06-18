@@ -51,7 +51,15 @@ export interface TurnRequest {
 // → telemetry → done | error. Binary uploads still go over POST /api/upload.
 
 /** Tools the workspace can invoke directly. Grows as capabilities are homed. */
-export type ToolId = "ocr";
+export type ToolId =
+  | "ocr"
+  | "translate"
+  | "search"
+  | "dictate"
+  | "speak"
+  | "vision"
+  | "soap"
+  | "corpus";
 
 export interface ToolUpload {
   /** Role this upload plays for the tool (e.g. "image"). */
@@ -83,14 +91,33 @@ export interface ToolTelemetry {
   metrics: ToolMetric[];
 }
 
+export interface SearchHit {
+  source: string;
+  section: string;
+  score: number;
+  snippet: string;
+  content: string;
+}
+export interface CorpusChunk {
+  source: string;
+  section: string;
+  snippet: string;
+}
+export interface InjectionFlag {
+  detected: boolean;
+  patterns: string[];
+}
+
 /** Tool result payloads, discriminated by `tool`. */
-export type ToolOutput = {
-  tool: "ocr";
-  text: string;
-  blocks: { text: string; confidence?: number }[];
-  /** Set when the recognised text contained instruction-like patterns (treated as data, never executed). */
-  injection?: { detected: boolean; patterns: string[] };
-};
+export type ToolOutput =
+  | { tool: "ocr"; text: string; blocks: { text: string; confidence?: number }[]; injection?: InjectionFlag }
+  | { tool: "translate"; text: string; direction: string; srcLang: string; tgtLang: string }
+  | { tool: "search"; query: string; hits: SearchHit[] }
+  | { tool: "dictate"; text: string; audioSeconds?: number }
+  | { tool: "speak"; audioUrl: string; chars: number }
+  | { tool: "vision"; findings: string; injection?: InjectionFlag }
+  | { tool: "soap"; text: string }
+  | { tool: "corpus"; workspace: string; docCount: number; chunkCount: number; embedModel: string; chunks: CorpusChunk[] };
 
 export type ClientMessage =
   | { type: "start"; turn: TurnRequest }
@@ -246,6 +273,7 @@ export type ServerEvent =
   // --- capability ("tool") runs ---
   | { type: "tool_accepted"; runId: string }
   | { type: "tool_stage"; runId: string; stage: string; status: "start" | "done"; detail?: string; ms?: number; progress?: number }
+  | { type: "tool_token"; runId: string; delta: string }
   | { type: "tool_telemetry"; runId: string; telemetry: ToolTelemetry }
   | { type: "tool_done"; runId: string; output: ToolOutput; evidence: string }
   | { type: "tool_error"; runId: string; message: string }
