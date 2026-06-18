@@ -54,8 +54,15 @@ model_weight_downloads:
       - "WHISPER_BASE_Q8_0               # multilingual speech-to-text, --audio + --lang"
       - "BERGAMOT_ES_EN / EN_ES / FR_EN / EN_FR  # offline translation, --lang"
       - "OCR_LATIN_RECOGNIZER_1          # optical character recognition, --ocr"
+      - "SD_V2_1_1B_Q4_0                 # on-device illustration (Stable Diffusion), Illustrate tool"
+      - "WAN2_1_T2V_1_3B_FP16 + UMT5_XXL_FP16 + WAN_2_1_VAE  # text-to-video (Animate); heavy/opt-in (~14.5 GB), OOMs under 20 GB unified"
+      - "QWEN3_600M_INST_Q4              # base for on-device LoRA fine-tuning (Adapt tool)"
+      - "(bundled) MobileNetV3-Small     # image classification (Screening aid capture-triage) — ships inside the SDK, NO download"
     notes: >-
-      Every modality (chat, embeddings/RAG, STT, TTS, vision, translation, OCR)
-      is served by an on-device @qvac/sdk model. No cloud AI endpoint is ever
+      Every modality (chat, embeddings/RAG, STT, TTS, vision, translation, OCR,
+      classification, image generation, text-to-video, and LoRA fine-tuning) is
+      served by an on-device @qvac/sdk model. No cloud AI endpoint is ever
       contacted for inference; the only network use is the one-time weight fetch
-      above and the P2P discovery DHT documented under remote_api_calls.
+      above and the P2P discovery DHT documented under remote_api_calls. The
+      bundled MobileNetV3 classifier needs no download at all; the heavy video
+      models are fetched only if a user opts into the Animate tool.

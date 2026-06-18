@@ -136,6 +136,10 @@ All models run on-device and are cached after first download.
 | SmolVLM2-500M + mmproj (Q8_0) | image understanding | ~0.5 GB | QVAC registry | per SmolVLM2 |
 | Bergamot (es/fr ↔ en) | translation | small | QVAC registry | per Bergamot |
 | OCR Latin recognizer | reading printed text | small | QVAC registry | per recognizer |
+| MobileNetV3-Small | image classification (screening aid) | bundled (no download) | `@qvac/sdk` | per MobileNetV3 |
+| Stable Diffusion 2.1 (Q4_0) | first-aid illustrations | ~2.2 GB | QVAC registry | per SD 2.1 |
+| Qwen3-0.6B Instruct (Q4) | LoRA fine-tuning base (Adapt) | ~0.4 GB | QVAC registry | per Qwen3 |
+| Wan 2.1 T2V 1.3B + UMT5-XXL + VAE | text-to-video (Animate, heavy/opt-in) | ~14.5 GB | QVAC registry | per Wan 2.1 |
 
 ## License and acknowledgements
 
