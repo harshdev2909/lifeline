@@ -76,17 +76,17 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
       <div className="space-y-5">
         <section className="space-y-1">
           <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-fg-faint">Answers</h3>
-          <div className="flex items-center justify-between gap-4 py-1.5">
+          <div className="flex flex-col gap-2 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <span className="text-sm text-fg">Default model</span>
             <Select
               ariaLabel="Default model"
               value={draft.defaultModel}
               onValueChange={(v) => set("defaultModel", v as ModelKey)}
               options={models.map((m) => ({ value: m.key, label: m.label, hint: MODEL_NOTES[m.key] }))}
-              className="min-w-[14rem]"
+              className="w-full sm:w-auto sm:min-w-[14rem]"
             />
           </div>
-          <div className="flex items-center justify-between gap-4 py-1.5">
+          <div className="flex flex-col gap-2 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <span className="text-sm text-fg">Default language</span>
             <Select
               ariaLabel="Default language"
@@ -97,7 +97,7 @@ export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                 { value: "es", label: "Español (round-trip)" },
                 { value: "fr", label: "Français (round-trip)" },
               ]}
-              className="min-w-[14rem]"
+              className="w-full sm:w-auto sm:min-w-[14rem]"
             />
           </div>
           <Toggle label="Ground answers in the field manual" hint="Retrieve passages, cite sources, and refuse when nothing relevant is found." checked={draft.grounded} onCheckedChange={(v) => set("grounded", v)} />

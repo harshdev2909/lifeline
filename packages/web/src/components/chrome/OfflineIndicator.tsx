@@ -17,7 +17,7 @@ export function OfflineIndicator() {
     return (
       <Badge tone="warn" tooltip={reconnecting ? "Connecting to the local bridge…" : "Lost the local bridge — retrying. Start it with `npm run bridge`."}>
         {reconnecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlugZap className="h-3 w-3" />}
-        {reconnecting ? "Connecting" : "Reconnecting"}
+        <span className="hidden sm:inline">{reconnecting ? "Connecting" : "Reconnecting"}</span>
       </Badge>
     );
   }
@@ -29,12 +29,12 @@ export function OfflineIndicator() {
         <span className="absolute inline-flex h-full w-full animate-breathe rounded-full bg-accent opacity-70" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
       </span>
-      On-device
+      <span className="hidden sm:inline">On-device</span>
     </Badge>
   ) : (
     <Badge tone="muted" tooltip="No internet — and that's fine. Everything runs on this device; only cross-device delegation needs a network.">
       <WifiOff className="h-3 w-3" />
-      Working offline
+      <span className="hidden sm:inline">Working offline</span>
     </Badge>
   );
 }

@@ -126,12 +126,12 @@ export function Composer() {
       >
         {recorder ? (
           <div className="flex items-center gap-3 px-4 py-3.5">
-            <span className="relative flex h-3 w-3">
+            <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emergency opacity-60" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-emergency" />
             </span>
-            <span className="text-sm text-fg">Listening… speak your question</span>
-            <button onClick={toggleRecording} className="ml-auto inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-contrast hover:bg-accent-hover">
+            <span className="min-w-0 flex-1 truncate text-sm text-fg">Listening… speak your question</span>
+            <button onClick={toggleRecording} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-contrast hover:bg-accent-hover">
               <Square className="h-3.5 w-3.5" aria-hidden /> Stop &amp; ask
             </button>
           </div>
@@ -166,7 +166,7 @@ export function Composer() {
               className="block max-h-[200px] w-full resize-none bg-transparent px-4 pb-2 pt-3.5 text-[0.95rem] leading-relaxed text-fg placeholder:text-fg-faint focus:outline-none"
             />
 
-            <div className="flex items-center gap-1 px-2.5 pb-2.5">
+            <div className="flex flex-wrap items-center gap-1 px-2.5 pb-2.5">
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <span>
@@ -197,7 +197,7 @@ export function Composer() {
                 </span>
               </Tooltip>
 
-              <div className="mx-1 h-5 w-px bg-hairline" />
+              <div className="mx-1 hidden h-5 w-px bg-hairline sm:block" />
 
               <Select
                 ariaLabel="Answer language"
@@ -218,7 +218,7 @@ export function Composer() {
                   value={model}
                   onValueChange={(v) => setModel(v as ModelKey)}
                   options={models.map((m) => ({ value: m.key, label: m.label }))}
-                  className="h-8 w-[12.5rem]"
+                  className="h-8 w-[12.5rem] max-w-[52vw] sm:max-w-none"
                   align="center"
                   side="top"
                 />

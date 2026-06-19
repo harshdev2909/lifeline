@@ -1,0 +1,46 @@
+{
+  "id": "resp-48a6b892-51eb-4c13-a579-b42146e95737",
+  "createdAt": "2026-06-19T04:18:44.685Z",
+  "location": "",
+  "severity": "emergency",
+  "model": "MedGemma 4B IT (Q4_1)",
+  "servedBy": "local",
+  "entries": [
+    {
+      "question": "How do I treat severe bleeding?",
+      "guidance": "",
+      "redFlag": true,
+      "redFlagTerms": [
+        "severe bleeding"
+      ],
+      "lang": "",
+      "citations": [
+        {
+          "tag": "S1",
+          "source": "field-first-aid",
+          "section": "Severe Bleeding",
+          "score": 0.5706332652898997,
+          "snippet": "For life-threatening external bleeding, act immediately. Apply firm, direct pressure on the wound with a clean cloth or "
+        },
+        {
+          "tag": "S2",
+          "source": "field-first-aid",
+          "section": "Nosebleed",
+          "score": 0.5460975657194231,
+          "snippet": "Sit upright and lean slightly forward so blood does not run down the throat, and pinch the soft part of the nose just be"
+        },
+        {
+          "tag": "S3",
+          "source": "field-first-aid",
+          "section": "Minor Cuts, Scrapes, and Wounds",
+          "score": 0.5172428485063314,
+          "snippet": "Wash your hands, then rinse the wound under clean running water to remove dirt. Stop bleeding with gentle direct pressur"
+        }
+      ]
+    }
+  ],
+  "evidence": [
+    "/Volumes/Extreme SSD/lifeline/evidence/run-2026-06-19T04-15-17-771Z.jsonl"
+  ],
+  "disclaimer": "⚠️  Lifeline gives first-aid EDUCATION and triage SUPPORT — not a medical diagnosis. It can be wrong or incomplete. In any emergency, call your local emergency number immediately."
+}

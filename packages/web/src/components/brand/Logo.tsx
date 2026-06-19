@@ -57,19 +57,22 @@ export function LogoMark({
   );
 }
 
-/** Horizontal lockup: the mark + "Lifeline" set in Geist with optical spacing. */
+/** Horizontal lockup: the mark + "Lifeline" set in Geist with optical spacing.
+ *  `textClassName` lets a caller responsively hide the text (mark-only). */
 export function Wordmark({
   size = 26,
   className,
+  textClassName,
 }: {
   size?: number;
   className?: string;
+  textClassName?: string;
 }) {
   return (
     <span className={clsx("inline-flex items-center gap-2.5 text-fg", className)}>
       <LogoMark size={size} />
       <span
-        className="font-sans font-semibold tracking-tightish"
+        className={clsx("font-sans font-semibold tracking-tightish", textClassName)}
         style={{ fontSize: size * 0.74, lineHeight: 1 }}
       >
         Lifeline

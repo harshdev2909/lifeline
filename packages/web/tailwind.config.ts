@@ -65,6 +65,9 @@ const config: Config = {
       mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
     },
     extend: {
+      // An extra-small breakpoint for the tightest phones (≤359px), where the
+      // header sheds its wordmark text down to the mark alone.
+      screens: { xs: "360px" },
       // Modular scale: tight, confident headings; comfortable body.
       fontSize: {
         "2xs": ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.01em" }],
@@ -109,6 +112,11 @@ const config: Config = {
           from: { opacity: "0" },
           to: { opacity: "1" },
         },
+        // Mobile tool drawer sliding in from the left edge.
+        "drawer-in": {
+          from: { opacity: "0", transform: "translateX(-100%)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
         shimmer: {
           "100%": { transform: "translateX(100%)" },
         },
@@ -125,6 +133,7 @@ const config: Config = {
         "fade-up": "fade-up 240ms cubic-bezier(0.22, 1, 0.36, 1) both",
         "dialog-in": "dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1)",
         "overlay-in": "overlay-in 160ms ease",
+        "drawer-in": "drawer-in 240ms cubic-bezier(0.22, 1, 0.36, 1)",
         shimmer: "shimmer 1.6s infinite",
         indeterminate: "indeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite",
       },
