@@ -102,6 +102,14 @@ Video generation (Animate) is included but heavy and opt-in: ~14.5 GB of models 
 
 More screenshots — the red-flag emergency state, the light theme, the live mesh, the [voice surface](docs/screenshots/09-voice-listening.png), and the [mesh control panel](docs/screenshots/10-mesh-control.png) — are in [`docs/screenshots/`](./docs/screenshots).
 
+## Hardware setup
+
+![Lifeline running at once on a laptop, a tablet, and a phone](docs/screenshots/hardware-setup.jpeg)
+
+Lifeline runs on one host and as many screens as you need. Here the laptop — an Apple M4, 10 cores, 16 GB, Metal — runs the on-device models and the local bridge; the tablet and phone open the same interface in their browsers over the network. They're thin clients: the inference always runs on the host, never on the phone or tablet. That's the field shape — one capable device in a clinic or a vehicle, and everyone around it reaching the same grounded assistant from whatever screen they have in hand.
+
+This is distinct from the peer-to-peer mesh. There, a second *compute* device (another laptop, a desktop, a Raspberry Pi) runs `lifeline serve` and a weaker host delegates its inference to it, falling back to local if it drops — see the delegation screenshots above and [`docs/demo.md`](./docs/demo.md).
+
 ## How it works
 
 Lifeline is a small core library with a CLI and a web interface on top of it. Neither the CLI nor the browser touches the model SDK directly; they talk to one interface, `InferenceEngine`, and a factory decides whether a given call runs on this device or on a peer. That single seam is what makes delegation invisible to the rest of the code. The web interface adds a thin localhost bridge (`packages/server`) that wraps the same engine and streams its events to the browser (`packages/web`); the browser runs no model and makes no network calls beyond localhost.
